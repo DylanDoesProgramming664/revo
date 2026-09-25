@@ -362,7 +362,7 @@ inline fn isIdent(pattern: []const u8) bool {
 fn expandPath(vm: *VM, path: []const u8) ![]u8 {
     if (path.len == 0 or path[0] != '~') return vm.runtime.alloc.dupe(u8, path);
 
-    if (path.len > 1 and path[1] != '`') return error.UnsupportedExpansion;
+    if (path.len > 1 and path[1] != '/') return error.UnsupportedExpansion;
 
     const home_z = try vm.runtime.alloc.dupeSentinel(u8, "HOME", 0);
     defer vm.runtime.alloc.free(home_z);
