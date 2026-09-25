@@ -16,6 +16,82 @@ pub const Impl = struct {
 
     pub const @"file.readdir" = readdirImpl(Args.table);
 
+    pub fn @"fs.chdir"(vm: *VM, path: Args.string) !HostResult {
+        _ = vm;
+        _ = path;
+
+        return .{ .ok = Value.new.core(.ok) };
+    }
+
+    // TODO(gusic): add support for patterns with ".." in them
+    // TODO(gusic): add support for recursive matching
+    // TODO(gusic): make use of depth limit
+    pub fn @"fs.glob"(vm: *VM, pattern: Args.string, recursive: Args.Optional(.bool, false), depth_limit: Args.Optional(.number, 100)) !HostResult {
+        _ = recursive;
+        _ = depth_limit;
+
+        const extracted_pattern = vm.stringValue(@intFromEnum(pattern));
+
+        const pattern_ = try vm.runtime.alloc.alloc(u8, extracted_pattern.len);
+        defer vm.runtime.alloc.free(pattern_);
+
+        _ = std.mem.replace(u8, extracted_pattern, "\\", "/", pattern_);
+
+        var real_pattern = std.mem.splitScalar(u8, pattern_, '/');
+
+        var paths: std.ArrayList([]const u8) = try .initCapacity(vm.runtime.alloc, 10);
+        defer {
+            for (paths.items) |path| vm.runtime.alloc.free(path);
+
+            paths.deinit(vm.runtime.alloc);
+        }
+
+        try paths.append(vm.runtime.alloc, try vm.runtime.alloc.dupe(u8, "."));
+
+        while (real_pattern.next()) |pat| {
+            // gusic: I did this because paths needs to be mutated while it is being iterated on
+            var old_paths = paths;
+            defer {
+                for (old_paths.items) |path| vm.runtime.alloc.free(path);
+
+                old_paths.deinit(vm.runtime.alloc);
+            }
+
+            paths = try .initCapacity(vm.runtime.alloc, old_paths.capacity);
+
+            for (old_paths.items) |path| {
+                var cwd = Dir.cwd().openDir(vm.runtime.io, path, .{ .iterate = true }) catch |err| switch (err) {
+                    error.NotDir => continue,
+
+                    else => @panic(@errorName(err)),
+                };
+
+                defer cwd.close(vm.runtime.io);
+
+                var it = cwd.iterate();
+
+                while (try it.next(vm.runtime.io)) |entry| {
+                    if (entry.name[0] == '.') continue; // gusic: skip any hidden files
+
+                    if (glob.match(pat, entry.name)) {
+                        const joined_path = try Dir.path.join(vm.runtime.alloc, &.{ path, entry.name });
+                        try paths.append(vm.runtime.alloc, joined_path);
+                    }
+                }
+            }
+        }
+
+        const table_id = try vm.tables.create();
+        var table = try vm.tables.get(table_id);
+
+        for (paths.items) |path| {
+            const path_value = try vm.ownValueStringNoDedup(path);
+            try table.push(vm.runtime.alloc, path_value);
+        }
+
+        return .data(Value.new.table(table_id));
+    }
+
     pub fn @"fs.exists?"(vm: *VM, path: Args.string) !HostResult {
         const expanded = expandPath(vm, vm.stringValue(@intFromEnum(path))) catch |err| return progErr(err);
         defer vm.runtime.alloc.free(expanded);
@@ -274,10 +350,19 @@ fn progErr(err: anyerror) HostResult {
 
 // -- [helpers] ---------------------------------------------------------------
 
+// Anything that isn't a pattern
+inline fn isIdent(pattern: []const u8) bool {
+    for (pattern) |ch|
+        if (!std.ascii.isAlphanumeric(ch))
+            return false;
+
+    return true;
+}
+
 fn expandPath(vm: *VM, path: []const u8) ![]u8 {
     if (path.len == 0 or path[0] != '~') return vm.runtime.alloc.dupe(u8, path);
 
-    if (path.len > 1 and path[1] != '/') return error.UnsupportedExpansion;
+    if (path.len > 1 and path[1] != '`') return error.UnsupportedExpansion;
 
     const home_z = try vm.runtime.alloc.dupeSentinel(u8, "HOME", 0);
     defer vm.runtime.alloc.free(home_z);
@@ -383,6 +468,8 @@ fn makeStatTable(vm: *VM, stat: File.Stat) !Value {
 fn sourceForPath(comptime template: []const u8, path: []const u8) ![]u8 {
     return std.fmt.allocPrint(alloc, template, .{path});
 }
+
+test "fs.glob returning empty table on non-existant path" {}
 
 test "fs.open/read reads file contents" {
     var tmp = std.testing.tmpDir(.{});
@@ -803,3 +890,5 @@ const metatable_mod = @import("metatable.zig");
 const root = @import("root.zig");
 const specs = @import("specs.zig");
 const HostResult = root.host.HostResult;
+
+const glob = @import("vendor/glob.zig");

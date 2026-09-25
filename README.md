@@ -117,3 +117,4 @@ revo is licensed as [MIT](./LICENSE.txt)
 
 ~ [isocline](https://github.com/daanx/isocline) by daanx - MIT\
 ~ [lsp-kit](https://github.com/zigtools/lsp-kit) by the zigtools team - MIT
+~ [glob](https://github.com/xcaeser/glob.zig/tree/master) by xcaeser - MIT
