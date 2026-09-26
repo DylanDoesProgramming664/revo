@@ -469,7 +469,22 @@ fn sourceForPath(comptime template: []const u8, path: []const u8) ![]u8 {
     return std.fmt.allocPrint(alloc, template, .{path});
 }
 
-test "fs.glob returning empty table on non-existant path" {}
+test "fs.glob returning empty table on bogus path" {
+    try testing.topString(
+        \\ let path = fs.glob "oughhhhhhhh"
+        \\ "#{path}"
+    , "{}");
+}
+
+test "fs.glob wildcards" {
+    const source =
+        \\ let paths = fs.glob "*.txt"
+        \\ "#{paths}"
+    ;
+
+    // gusic: i'm not sure this one will work on linux
+    try testing.topString(source, "{ .\\LICENSE.txt }");
+}
 
 test "fs.open/read reads file contents" {
     var tmp = std.testing.tmpDir(.{});
