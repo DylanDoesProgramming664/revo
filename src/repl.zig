@@ -340,11 +340,8 @@ pub const Session = struct {
     fn helpModule(self: *Session, out: *std.Io.Writer, name: []const u8) !bool {
         var found = false;
         for (revo.baselib.specs.full_specs) |group| for (group) |*spec| {
-            const is_mod = switch (spec.head.kind) {
-                .namespaced => spec.head.module != null and std.mem.eql(u8, spec.head.module.?, name),
-                .method => spec.head.target_name != null and std.mem.eql(u8, spec.head.target_name.?, name),
-                .global => false,
-            };
+            const is_mod = spec.head.kind == .namespaced and spec.head.module != null and
+                std.mem.eql(u8, spec.head.module.?, name);
             if (!is_mod) continue;
             if (!found) {
                 found = true;

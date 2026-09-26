@@ -36,7 +36,8 @@ in it, are:
 
 - actual error handling via `anyerror!HostResult`
   this means you can use `try` anywhere and return any
-- arity & type checking by vm (you don't always have to do it manually, just setting up a .d.rv will typecheck at compile-time)
+- arity & type checking by vm (you don't always have to do it manually;
+  revo still checks arities at runtime from the binding tags)
 - access to the actual full revo `*VM` (for string interning, table ops, etc.)
 
 ### example
@@ -106,16 +107,6 @@ pub export const revo_native_bindings = [_]HostBinding{
 
 the vm looks up `revo_native_bindings` from the `.so`/`.dylib` and registers each
 entry as a host function. the `arity` field is used for runtime arity checking.
-
-### type manifest (.d.rv)
-
-the sibling `<stem>.d.rv` file provides compiletime type info for revo code that
-imports the extension. it's optional but recommended:
-
-```rv
-pub declare add = fn(a: number, b: number) -> number
-pub declare echo = fn(s: string) -> string
-```
 
 ### build setup
 

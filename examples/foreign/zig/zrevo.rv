@@ -1,0 +1,12 @@
+const zrevo: {
+  #* add a + b *#
+  zadd: fn(a: number, b: number) -> number,
+  #* echo s *#
+  zecho: fn(s: string) -> string,
+  #* set global called name to value *#
+  zsetglobal: fn(name: string, value: any) -> number,
+  #* get a string of parts separated by separator *#
+  zconcat: fn(parts: table, sep: string) -> string,
+} = import "./zrevo.so"
+
+zrevo

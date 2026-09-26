@@ -467,36 +467,6 @@ declare lamp = fn(volume: number, label: string) -> bool
 `declare` is top-level only, once per name, order-sensitive like `const`, and
 rejects value rebinding of the name.
 
-#### `.d.rv` declaration files
-
-a `.d.rv` file holds only `pub declare`s and `pub type`s
-importing one is compile-time only,
-  the file never executes and the module resolves to an empty table
-
-```revo
-# audio.d.rv
-pub type Volume = number
-pub declare ring = fn(volume: Volume, label: string) -> bool
-```
-
-```revo
-import "audio.d.rv"
-
-audio.ring(1, "x")     # typechecks; errors at runtime: field ring does not exist
-```
-
-both forms accept dotted heads, so an alias can name its module explicitly and is used qualifiedly:
-    `pub type audio.Volume = number` is annotated as `audio.Volume`
-core `Target:key` heads are rejected on `pub type`; metatable slots are values, not types.
-
-`.d.rv` is also how shared library extensions get their types: `import
-"extension.so"` looks up a sibling `extension.d.rv` by stem and types every
-call against those `pub declare`s
-
-and the standard library itself is driven by them - `src/baselib/iface/*.d.rv`
-are the single source of truth that the runtime registration, compile-time
-typing, and the [generated reference](./std) all read from
-
 ### union types
 
 unions model tagged values. each variant is either an atom alone or an atom with a payload:
@@ -1520,7 +1490,7 @@ extract docs with `revo doc script.rv`:
   adds two numbers
 ```
 
-the baselib runs on the same comments: `src/baselib/iface/*.d.rv` is the single
+the baselib runs on the same comments: `src/baselib/sigs/std.rv` is the single
 source of truth behind runtime registration, compile-time typing, and the
 [generated reference]({{< ref "std" >}})
 
@@ -1693,8 +1663,8 @@ print(x, y) # 2, 1
 
 #### preloaded macros
 
-these live in `src/baselib/sigs/root.d.rv` and merge into every build.
-  right now that file declares no macros; baselib groups can add
+these live in `src/baselib/sigs/std.rv` and merge into every build.
+  right now that file declares no macros; baselib tables can add
   `pub proc` macros there (`pub proc uri.shout! ...`), called qualified
 
 ### metatables

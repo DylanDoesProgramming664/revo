@@ -195,30 +195,6 @@ fn collectModule(alloc: std.mem.Allocator, specs: []*const FnSpec, mod_name: []c
     return planned;
 }
 
-fn collectMethodTargets(alloc: std.mem.Allocator, specs: []*const FnSpec) !std.ArrayList([]const u8) {
-    var set = std.StringHashMapUnmanaged(void){};
-    defer set.deinit(alloc);
-    for (specs) |s| {
-        if (s.head.target_name) |prefix| try set.put(alloc, prefix, {});
-    }
-    var names = std.ArrayList([]const u8).empty;
-    var it = set.keyIterator();
-    while (it.next()) |k| try names.append(alloc, k.*);
-    std.mem.sort([]const u8, names.items, {}, lessStr);
-    return names;
-}
-
-fn collectMethods(alloc: std.mem.Allocator, specs: []*const FnSpec, target_name: []const u8) !std.ArrayList(Planned) {
-    var planned = std.ArrayList(Planned).empty;
-    for (specs) |s| {
-        if (std.mem.eql(u8, s.head.target_name orelse "", target_name)) {
-            try planned.append(alloc, .{ .spec = s });
-        }
-    }
-    sortByName(planned.items);
-    return planned;
-}
-
 fn writeIndent(w: *Writer, indent: usize) !void {
     var i: usize = 0;
     while (i < indent) : (i += 1) try w.writeByte(' ');
@@ -244,15 +220,11 @@ pub fn renderText(
         try w.writeAll("\n");
     }
 
-    var consumed = std.StringHashMapUnmanaged(void){};
-    defer consumed.deinit(alloc);
-
-    try renderTextGlobals(alloc, w, specs, &consumed);
-    try renderTextModules(alloc, w, specs, &consumed);
-    try renderTextMethods(alloc, w, specs, &consumed);
+    try renderTextGlobals(alloc, w, specs);
+    try renderTextModules(alloc, w, specs);
 }
 
-fn renderTextGlobals(alloc: std.mem.Allocator, w: *Writer, specs: []*const FnSpec, consumed: *std.StringHashMapUnmanaged(void)) !void {
+fn renderTextGlobals(alloc: std.mem.Allocator, w: *Writer, specs: []*const FnSpec) !void {
     var planned = try collectGlobals(alloc, specs);
     defer planned.deinit(alloc);
     if (planned.items.len == 0) return;
@@ -263,11 +235,10 @@ fn renderTextGlobals(alloc: std.mem.Allocator, w: *Writer, specs: []*const FnSpe
     try w.writeAll("\n");
     for (planned.items) |p| {
         try renderFn(alloc, w, p.spec, .{ .sig_indent = 2, .doc_indent = 4 });
-        try renderTextNestedMethods(alloc, w, specs, p.spec.name, 4, 6, consumed);
     }
 }
 
-fn renderTextModules(alloc: std.mem.Allocator, w: *Writer, specs: []*const FnSpec, consumed: *std.StringHashMapUnmanaged(void)) !void {
+fn renderTextModules(alloc: std.mem.Allocator, w: *Writer, specs: []*const FnSpec) !void {
     var names = try collectModuleNames(alloc, specs);
     defer names.deinit(alloc);
     if (names.items.len == 0) return;
@@ -301,62 +272,11 @@ fn renderTextModules(alloc: std.mem.Allocator, w: *Writer, specs: []*const FnSpe
 
         for (planned.items) |p| {
             try renderFn(alloc, w, p.spec, .{ .sig_indent = 4, .doc_indent = 6 });
-            try renderTextNestedMethods(alloc, w, specs, p.spec.name, 6, 8, consumed);
         }
     }
 }
 
-fn renderTextMethods(alloc: std.mem.Allocator, w: *Writer, specs: []*const FnSpec, consumed: *const std.StringHashMapUnmanaged(void)) !void {
-    var names = try collectMethodTargets(alloc, specs);
-    defer names.deinit(alloc);
-
-    var remaining = std.ArrayList([]const u8).empty;
-    defer remaining.deinit(alloc);
-    for (names.items) |n| {
-        if (!consumed.contains(n)) try remaining.append(alloc, n);
-    }
-    if (remaining.items.len == 0) return;
-
-    try style(w, bold);
-    try w.writeAll("methods");
-    try style(w, reset);
-    try w.writeAll("\n");
-    for (remaining.items) |target_name| {
-        var planned = try collectMethods(alloc, specs, target_name);
-        defer planned.deinit(alloc);
-
-        try w.writeAll("\n  ");
-        try style(w, dim);
-        try w.writeAll("type ");
-        try style(w, reset);
-        try style(w, bold ++ blue);
-        try w.writeAll(target_name);
-        try style(w, reset);
-        try w.writeAll("\n");
-
-        for (planned.items) |p| try renderFn(alloc, w, p.spec, .{ .strip_method = true, .sig_indent = 4, .doc_indent = 6 });
-    }
-}
-
-fn renderTextNestedMethods(
-    alloc: std.mem.Allocator,
-    w: *Writer,
-    specs: []*const FnSpec,
-    target_name: []const u8,
-    sig_indent: usize,
-    doc_indent: usize,
-    consumed: *std.StringHashMapUnmanaged(void),
-) !void {
-    var planned = try collectMethods(alloc, specs, target_name);
-    defer planned.deinit(alloc);
-    if (planned.items.len == 0) return;
-
-    try consumed.put(alloc, target_name, {});
-    for (planned.items) |p| try renderFn(alloc, w, p.spec, .{ .strip_method = true, .sig_indent = sig_indent, .doc_indent = doc_indent });
-}
-
 pub const FnOpts = struct {
-    strip_method: bool = false,
     sig_indent: usize = 0,
     doc_indent: usize = 0,
     /// full `mod.name` head for type aliases instead of bare `name`
@@ -370,11 +290,7 @@ pub const FnOpts = struct {
 pub fn renderFn(alloc: std.mem.Allocator, w: *Writer, spec: *const FnSpec, opts: FnOpts) !void {
     var sig_buf = std.Io.Writer.Allocating.init(alloc);
     defer sig_buf.deinit();
-    if (opts.strip_method) {
-        try specs_mod.renderSignatureStripMethod(&sig_buf.writer, spec.*);
-    } else {
-        try specs_mod.renderSignature(&sig_buf.writer, spec.*);
-    }
+    try specs_mod.renderSignature(&sig_buf.writer, spec.*);
     const sig = sig_buf.written();
     if (opts.leading_newline) try w.writeAll("\n");
     try writeIndent(w, opts.sig_indent);
@@ -470,18 +386,15 @@ pub fn renderHtml(
 ) !void {
     var slugs = SlugSet{};
     defer slugs.deinit(alloc);
-    var consumed = std.StringHashMapUnmanaged(void){};
-    defer consumed.deinit(alloc);
 
     if (module_doc.len > 0) {
         try writeHtmlTextBlock(w, 0, "<p class=\"module-doc\">", "</p>", module_doc, 0);
     }
-    try renderHtmlGlobals(alloc, w, specs, &slugs, &consumed);
-    try renderHtmlModules(alloc, w, specs, &slugs, &consumed);
-    try renderHtmlMethods(alloc, w, specs, &slugs, &consumed);
+    try renderHtmlGlobals(alloc, w, specs, &slugs);
+    try renderHtmlModules(alloc, w, specs, &slugs);
 }
 
-fn renderHtmlGlobals(alloc: std.mem.Allocator, w: *Writer, specs: []*const FnSpec, slugs: *SlugSet, consumed: *std.StringHashMapUnmanaged(void)) !void {
+fn renderHtmlGlobals(alloc: std.mem.Allocator, w: *Writer, specs: []*const FnSpec, slugs: *SlugSet) !void {
     var planned = try collectGlobals(alloc, specs);
     defer planned.deinit(alloc);
     if (planned.items.len == 0) return;
@@ -497,14 +410,14 @@ fn renderHtmlGlobals(alloc: std.mem.Allocator, w: *Writer, specs: []*const FnSpe
     try w.writeAll("<details open>\n");
     try writeIndent(w, 4);
     try w.print("<summary>{d} entries</summary>\n\n", .{planned.items.len});
-    for (planned.items) |p| try renderHtmlFn(w, p, false, 4, alloc, specs, slugs, consumed);
+    for (planned.items) |p| try renderHtmlFn(w, p, 4, alloc);
     try writeIndent(w, 2);
     try w.writeAll("</details>\n");
 
     try w.writeAll("</section>\n\n");
 }
 
-fn renderHtmlModules(alloc: std.mem.Allocator, w: *Writer, specs: []*const FnSpec, slugs: *SlugSet, consumed: *std.StringHashMapUnmanaged(void)) !void {
+fn renderHtmlModules(alloc: std.mem.Allocator, w: *Writer, specs: []*const FnSpec, slugs: *SlugSet) !void {
     var names = try collectModuleNames(alloc, specs);
     defer names.deinit(alloc);
     if (names.items.len == 0) return;
@@ -517,50 +430,21 @@ fn renderHtmlModules(alloc: std.mem.Allocator, w: *Writer, specs: []*const FnSpe
         var planned = try collectModule(alloc, specs, mod_name);
         defer planned.deinit(alloc);
         for (planned.items) |*p| p.slug = try slugs.assign(alloc, p.spec.name);
-        try renderHtmlGroup(w, "module", mod_name, planned.items, false, 2, alloc, specs, slugs, consumed);
+        try renderHtmlGroup(w, "module", mod_name, planned.items, 2, alloc);
     }
 
     try w.writeAll("</section>\n\n");
 }
 
-fn renderHtmlMethods(alloc: std.mem.Allocator, w: *Writer, specs: []*const FnSpec, slugs: *SlugSet, consumed: *const std.StringHashMapUnmanaged(void)) !void {
-    var names = try collectMethodTargets(alloc, specs);
-    defer names.deinit(alloc);
-
-    var remaining = std.ArrayList([]const u8).empty;
-    defer remaining.deinit(alloc);
-    for (names.items) |n| {
-        if (!consumed.contains(n)) try remaining.append(alloc, n);
-    }
-    if (remaining.items.len == 0) return;
-
-    try w.writeAll("<section class=\"section section-methods\">\n");
-    try writeIndent(w, 2);
-    try w.writeAll("<h2>methods</h2>\n\n");
-
-    for (remaining.items) |target_name| {
-        var planned = try collectMethods(alloc, specs, target_name);
-        defer planned.deinit(alloc);
-        for (planned.items) |*p| p.slug = try slugs.assign(alloc, p.spec.name);
-        try renderHtmlGroup(w, "type", target_name, planned.items, true, 2, alloc, specs, slugs, @constCast(consumed));
-    }
-
-    try w.writeAll("</section>\n\n");
-}
-
-/// a `module <name>` / `type <name>` group, its own `<section>` nested
+/// a `module <name>` group, its own `<section>` nested
 /// `indent` spaces deep; everything inside is one step further in
 fn renderHtmlGroup(
     w: *Writer,
     kind: []const u8,
     name: []const u8,
     planned: []const Planned,
-    strip_prefix: bool,
     indent: usize,
     alloc: std.mem.Allocator,
-    specs: []*const FnSpec,
-    slugs: *SlugSet,
-    consumed: *std.StringHashMapUnmanaged(void),
 ) !void {
     try writeIndent(w, indent);
     try w.writeAll("<section class=\"group\">\n");
@@ -586,7 +470,7 @@ fn renderHtmlGroup(
     try writeIndent(w, indent + 4);
     try w.print("<summary>{d} entries</summary>\n\n", .{planned.len});
     for (planned) |p| {
-        try renderHtmlFn(w, p, strip_prefix, indent + 4, alloc, specs, slugs, consumed);
+        try renderHtmlFn(w, p, indent + 4, alloc);
     }
     try writeIndent(w, indent + 2);
     try w.writeAll("</details>\n");
@@ -617,12 +501,8 @@ fn renderHtmlToc(w: *Writer, planned: []const Planned, indent: usize) !void {
 fn renderHtmlFn(
     w: *Writer,
     p: Planned,
-    strip_prefix: bool,
     indent: usize,
     alloc: std.mem.Allocator,
-    specs: []*const FnSpec,
-    slugs: *SlugSet,
-    consumed: *std.StringHashMapUnmanaged(void),
 ) anyerror!void {
     const spec = p.spec;
 
@@ -639,11 +519,7 @@ fn renderHtmlFn(
     } else {
         var sig_buf = std.Io.Writer.Allocating.init(alloc);
         defer sig_buf.deinit();
-        if (strip_prefix) {
-            try specs_mod.renderSignatureStripMethod(&sig_buf.writer, spec.*);
-        } else {
-            try specs_mod.renderSignature(&sig_buf.writer, spec.*);
-        }
+        try specs_mod.renderSignature(&sig_buf.writer, spec.*);
         try writeHtmlTextBlock(w, 0, "<pre class=\"signature\"><code>", "</code></pre>", sig_buf.written(), 0);
     }
 
@@ -661,37 +537,8 @@ fn renderHtmlFn(
         try renderHtmlDoc(w, spec.doc, indent + 2);
     }
 
-    try renderHtmlNestedMethods(alloc, w, specs, spec.name, indent + 2, slugs, consumed);
-
     try writeIndent(w, indent);
     try w.writeAll("</article>\n\n");
-}
-
-fn renderHtmlNestedMethods(
-    alloc: std.mem.Allocator,
-    w: *Writer,
-    specs: []*const FnSpec,
-    target_name: []const u8,
-    indent: usize,
-    slugs: *SlugSet,
-    consumed: *std.StringHashMapUnmanaged(void),
-) anyerror!void {
-    var planned = try collectMethods(alloc, specs, target_name);
-    defer planned.deinit(alloc);
-    if (planned.items.len == 0) return;
-
-    try consumed.put(alloc, target_name, {});
-    for (planned.items) |*p| p.slug = try slugs.assign(alloc, p.spec.name);
-
-    try writeIndent(w, indent);
-    try w.writeAll("<section class=\"methods\">\n");
-    try writeIndent(w, indent + 2);
-    try w.writeAll("<h5>methods</h5>\n\n");
-    for (planned.items) |p| {
-        try renderHtmlFn(w, p, true, indent + 2, alloc, specs, slugs, consumed);
-    }
-    try writeIndent(w, indent);
-    try w.writeAll("</section>\n\n");
 }
 
 fn renderHtmlDoc(w: *Writer, doc: []const u8, indent: usize) !void {

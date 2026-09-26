@@ -58,6 +58,8 @@ pub const RecordField = struct {
     type_expr: *TypeExpr,
     /// `?name:` fields may be absent; `name:` and `name: T?` require the key
     optional: bool = false,
+    /// `#* ... *#` doc before the field in a `declare` table; borrowed like name
+    doc: ?[]const u8 = null,
 };
 
 pub const TypeExpr = struct {
@@ -207,6 +209,7 @@ pub fn cloneTypeExpr(alloc: std.mem.Allocator, te: *const TypeExpr) std.mem.Allo
                 .name = try alloc.dupe(u8, f.name),
                 .type_expr = try cloneTypeExpr(alloc, f.type_expr),
                 .optional = f.optional,
+                .doc = if (f.doc) |d| try alloc.dupe(u8, d) else null,
             };
             break :blk .{ .record = owned };
         },
@@ -258,6 +261,7 @@ pub fn freeTypeExpr(alloc: std.mem.Allocator, te: *TypeExpr) void {
             for (fields) |f| {
                 alloc.free(f.name);
                 freeTypeExpr(alloc, f.type_expr);
+                if (f.doc) |d| alloc.free(d);
             }
             alloc.free(fields);
         },
@@ -463,16 +467,14 @@ pub fn bareMacroName(name: []const u8) []const u8 {
 pub fn bareName(t: TypeAlias) []const u8 {
     if (t.declare_head) |dh| switch (dh) {
         .module => |segs| return segs[segs.len - 1],
-        .core => |c| return c.key,
     };
     return t.name;
 }
 
-/// a declare's name may name a target instead of a plain ident:
-/// `fs.open`, `string:__index`, or a plain ident (`.`/head = null)
+/// a declare's name may name a module instead of a plain ident:
+/// `fs.open` or a plain ident (`.`/head = null)
 pub const DeclareHead = union(enum) {
     module: []const []const u8, // dotted path segments: "fs.open" -> &.{"fs", "open"}
-    core: struct { target: []const u8, key: []const u8 }, // "string:__index"
 };
 
 pub const Quasiquote = struct {

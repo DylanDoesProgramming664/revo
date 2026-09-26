@@ -12,8 +12,7 @@ const TypeInfo = types.TypeInfo;
 /// ~ non pub items are skipped
 ///
 /// ~ type aliases are compile-time only (not values)
-/// ~ record is null when nothing is exported: such modules evaluate to
-///   their last expression, not a table, so the import stays untyped
+/// ~ record is null unless a pub export or an ascribed tail types it
 ///   (TOOD: give them types like all real closures)
 /// ~ dep-local names resolve inside the dep, never in importer scope,,, all hermetic
 /// ~ names borrow dep src
@@ -65,7 +64,14 @@ pub fn moduleInterface(alloc: std.mem.Allocator, items: []const *ast.Node) !Modu
             try aliases.append(alloc, .{ .name = name, .info = ti });
         }
     }
-    if (out.items.len == 0) return .{ .record = null, .aliases = try aliases.toOwnedSlice(alloc) };
+    if (out.items.len == 0) {
+        // a pub-less module is its last expression, so an ascribed tail
+        // binding types the import flat, no declare needed:
+        //   const e: { add: fn(number) -> number } = import "./ext.so"
+        //   e
+        const tail = tailBindingType(&mctx, items);
+        return .{ .record = tail, .aliases = try aliases.toOwnedSlice(alloc) };
+    }
     const value = try alloc.create(TypeInfo);
     value.* = .{ .tag = .any };
     return .{
@@ -159,7 +165,7 @@ fn moduleExportInto(mctx: *ModuleCtx, node: *const ast.Node, out: *std.ArrayList
     const alloc = mctx.alloc;
     switch (node.expr) {
         .decl => |d| {
-            // .d.rv manifests declare host contracts
+            // host contracts, no runtime value
             if (d.kind == .declare_decl and d.inner.expr == .type_alias) {
                 if (!d.pub_) return;
                 const t = d.inner.expr.type_alias;
@@ -171,12 +177,18 @@ fn moduleExportInto(mctx: *ModuleCtx, node: *const ast.Node, out: *std.ArrayList
             switch (d.inner.expr) {
                 .binding => |b| {
                     if (b.target.expr != .ident) return;
+                    // ascription wins over inference, as in analyzeBinding
+                    const inferred = types.inferExprType(mctx.check(), b.value);
+                    const field_type = if (b.type_name) |tn|
+                        types.evalTypeExpr(mctx.check(), tn) catch inferred
+                    else
+                        inferred;
                     try out.append(alloc, .{
                         .name = b.target.expr.ident,
                         // inferred with the module ctx: unknown names
                         // degrade to any inside inference, so nothing
                         // leaks across scopes
-                        .field_type = types.inferExprType(mctx.check(), b.value),
+                        .field_type = field_type,
                     });
                 },
                 // type aliases are compile-time only so skip them
@@ -191,4 +203,48 @@ fn moduleExportInto(mctx: *ModuleCtx, node: *const ast.Node, out: *std.ArrayList
         }),
         else => {},
     }
+}
+/// the name a pub-less module evaluates to: a trailing `return e`, `e` or
+///   `const e = ...`, null otherwise
+pub fn tailBindingName(items: []const *ast.Node) ?[]const u8 {
+    if (items.len == 0) return null;
+    const last = items[items.len - 1];
+    if (last.expr == .decl and last.expr.decl.inner.expr == .binding) {
+        const b = last.expr.decl.inner.expr.binding;
+        if (b.target.expr == .ident and !ast.isDiscardName(b.target.expr.ident)) return b.target.expr.ident;
+        return null;
+    }
+    switch (last.expr) {
+        .return_expr => |val| {
+            const v = val orelse return null;
+            if (v.expr != .ident or ast.isDiscardName(v.expr.ident)) return null;
+            return v.expr.ident;
+        },
+        .ident => |n| {
+            if (ast.isDiscardName(n)) return null;
+            return n;
+        },
+        else => return null,
+    }
+}
+
+/// the tail binding's ascription, newest binding first
+fn tailBindingType(mctx: *ModuleCtx, items: []const *ast.Node) ?TypeInfo {
+    const name = tailBindingName(items) orelse return null;
+    var i = items.len;
+    while (i > 0) {
+        i -= 1;
+        const item = items[i];
+        if (item.expr == .decl and item.expr.decl.inner.expr == .binding) {
+            const b = item.expr.decl.inner.expr.binding;
+            if (b.target.expr == .ident and std.mem.eql(u8, b.target.expr.ident, name)) {
+                if (b.type_name) |tn| {
+                    return types.evalTypeExpr(mctx.check(), tn) catch null;
+                }
+                return null;
+            }
+        }
+        if (item.expr == .import_stmt and std.mem.eql(u8, item.expr.import_stmt.name, name)) return null;
+    }
+    return null;
 }

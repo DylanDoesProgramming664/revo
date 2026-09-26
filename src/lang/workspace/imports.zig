@@ -2,8 +2,6 @@
 
 const std = @import("std");
 
-const revo = @import("revo");
-
 const ast = @import("../ast.zig");
 const common = @import("common.zig");
 const Parser = @import("../Parser.zig");
@@ -51,15 +49,6 @@ fn resolveImportPath(
     else
         std.Io.Dir.path.join(self.alloc, &.{ base_dir, clean }) catch return null;
     const ext = std.Io.Dir.path.extension(joined);
-    if (ext.len != 0 and isLibExtension(ext)) {
-        // a shared library import is described by its sibling manifest
-        const manifest = revo.extensionManifestPath(self.alloc, joined) catch {
-            self.alloc.free(joined);
-            return null;
-        };
-        self.alloc.free(joined);
-        return manifest;
-    }
     if (ext.len != 0) return joined;
     const with_ext = std.fmt.allocPrint(self.alloc, "{s}.rv", .{joined}) catch {
         self.alloc.free(joined);
@@ -67,13 +56,6 @@ fn resolveImportPath(
     };
     self.alloc.free(joined);
     return with_ext;
-}
-
-/// shared library extensions; the type interface for these is a sibling manifest
-fn isLibExtension(ext: []const u8) bool {
-    return std.mem.eql(u8, ext, ".so") or
-        std.mem.eql(u8, ext, ".dylib") or
-        std.mem.eql(u8, ext, ".dll");
 }
 
 /// given a file and the name of an import binding, return the symbols
@@ -153,7 +135,6 @@ const FindImportVisitor = struct {
 
 /// auto-bound name for a bare `import "path"`, mirroring Parser
 fn autoImportName(path: []const u8) []const u8 {
-    if (std.mem.endsWith(u8, path, ".d.rv")) return path[0 .. path.len - ".d.rv".len];
     return std.Io.Dir.path.stem(path);
 }
 

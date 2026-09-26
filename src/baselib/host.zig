@@ -153,21 +153,6 @@ pub const ParamType = union(enum) {
     }
 };
 
-pub fn paramTypeFromName(name: []const u8) ?ParamType {
-    const tbl = std.StaticStringMap(ParamType).initComptime(.{
-        .{ "number", .number },
-        .{ "int", .number },
-        .{ "string", .string },
-        .{ "atom", .atom },
-        .{ "function", .function },
-        .{ "table", .table },
-        .{ "resource", .resource },
-        .{ "bool", .bool },
-        .{ "any", .any },
-    });
-    return tbl.get(name);
-}
-
 /// lookup `key` in the module table named `name`; null when the module
 /// or key is absent. untyped method receivers fall back here via the
 /// type metatable's `__index` chain
@@ -480,7 +465,6 @@ pub fn impls(comptime ImplType: type) type {
 test "resource param type" {
     const t = std.testing;
     const r: ParamType = .resource;
-    try t.expect(paramTypeFromName("resource").? == .resource);
     try t.expect(ParamType.fromTag(@as(u8, 7)) == .resource);
     try t.expect(r.toTag() == 7);
     const r_param = comptime typeToParam(ArgTypes.resource);

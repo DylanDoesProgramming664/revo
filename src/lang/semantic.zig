@@ -578,7 +578,9 @@ const SemanticChecker = struct {
                 }
             }
         }
-        // method lookup for string and table
+        // method lookup runs through the type's module table: the module
+        // fn doubles as the method, e.g. `t:unwrap_err()` resolves
+        // `table.unwrap_err` at runtime
         const target: ?revo.baselib.host.ParamType = switch (object_type.tag) {
             .number => .number,
             .string => .string,
@@ -586,13 +588,6 @@ const SemanticChecker = struct {
             else => null,
         };
         if (target) |t| {
-            if (findMethodByNameAndTarget(name, t)) |spec| {
-                if (self.makeStdlibSig(spec) catch null) |sig| {
-                    return .{ .tag = .{ .function = sig } };
-                }
-            }
-            // single-entry baselib: the module fn doubles as the method, e.g.
-            // `t:unwrap_err()` resolves `table.unwrap_err` at runtime
             if (findModuleByNameAndTarget(name, t)) |spec| {
                 if (self.makeStdlibSig(spec) catch null) |sig| {
                     return .{ .tag = .{ .function = sig } };
@@ -620,6 +615,30 @@ const SemanticChecker = struct {
         return .{ .tag = .any };
     }
 
+    /// `T?` and `?T` both land as a union carrying `:nil`
+    fn isNilableParam(te: ?*ast.TypeExpr) bool {
+        const t = te orelse return false;
+        const variants = switch (t.kind) {
+            .union_of => |v| v,
+            else => return false,
+        };
+        for (variants) |v| {
+            if (v.kind == .atom and std.mem.startsWith(u8, v.kind.atom, ":")) return true;
+        }
+        return false;
+    }
+
+    /// params up to the first soft one: `?name:`, `name: T?` or a variadic
+    ///   tail, all of which the host fills in
+    fn fixedPrefix(params: []const ast.FnParam) usize {
+        var n: usize = 0;
+        for (params) |p| {
+            if (p.optional or p.variadic or isNilableParam(p.type_name)) break;
+            n += 1;
+        }
+        return n;
+    }
+
     fn makeStdlibSig(self: *SemanticChecker, spec: *const revo.baselib.specs.FnSpec) !?*const FnSig {
         if (spec.is_type) return null;
         if (self.sig_cache.get(spec)) |sig| return sig;
@@ -639,15 +658,15 @@ const SemanticChecker = struct {
         const names_slice = try param_names.toOwnedSlice(self.alloc);
         const types_slice = try param_types.toOwnedSlice(self.alloc);
 
-        // required comes from the host arity, not the `?` flags: baselib
-        // spells optionals as nilable unions (`mode: string?`) with variadic
-        // hosts, so flag-derived counts would over-require. keep in sync.
+        // required is the host arity, not the `?` flags, since baselib
+        // spells optionals as nilable; the fixed prefix is a floor on top,
+        //   so `zip(a, b, rest...)` still wants two. keep in sync
         const ret = if (ft.return_type) |r| types_mod.evalTypeExpr(self.check(), r) catch types_mod.TypeInfo{ .tag = .any } else types_mod.TypeInfo{ .tag = .any };
         const sig = try types_mod.newSignature(self.alloc, .{
             .param_names = names_slice,
             .params = types_slice,
             .return_type = ret,
-            .required_count = spec.f.arity,
+            .required_count = @max(spec.f.arity, fixedPrefix(ft.params)),
             .type_params = spec.type_params,
             .doc = if (spec.doc.len > 0) spec.doc else null,
         });
@@ -1687,11 +1706,16 @@ const SemanticChecker = struct {
             if (!call.implicit_self and !std.mem.endsWith(u8, call.callee.expr.field.name, "!")) {
                 const f = call.callee.expr.field;
                 const obj_type = types_mod.inferExprType(self.check(), f.object);
-                const dispatches = switch (obj_type.tag) {
-                    .string => findMethodByNameAndTarget(f.name, .string) != null,
-                    .table => findMethodByNameAndTarget(f.name, .table) != null,
-                    else => false,
+                // a dot-call matching a member of the object's module table
+                // dispatches at runtime (`t.at(0)` finds `table.at`), so only
+                // flag names that resolve to neither field nor module member
+                const target: ?revo.baselib.host.ParamType = switch (obj_type.tag) {
+                    .number => .number,
+                    .string => .string,
+                    .table => .table,
+                    else => null,
                 };
+                const dispatches = if (target) |t| findModuleByNameAndTarget(f.name, t) != null else false;
                 if (!dispatches) try self.checkKnownField(f.object, f.name, call.callee.span);
             }
         }
@@ -1714,13 +1738,14 @@ const SemanticChecker = struct {
             const total_args = call.args.len + self_offset;
             if (total_args < sig.required_count or (total_args > sig.params.len)) {
                 const baselib_spec = find_spec: {
-                    // same name can exist as both a global and a method
-                    // (e.g. `read` vs `file:read`); match the call kind
+                    // same name can exist as both a global and a module
+                    // member; match the call kind (`t:m()` prepends self,
+                    // so only namespaced members pair with colon calls)
                     for (revo.baselib.specs.full_specs) |group| for (group) |*s| {
                         if (s.is_type) continue;
                         if (!std.mem.eql(u8, s.name, name)) continue;
                         const head = s.head;
-                        if (call.implicit_self and head.kind == .method) break :find_spec s;
+                        if (call.implicit_self and head.kind == .namespaced) break :find_spec s;
                         if (!call.implicit_self and head.kind == .global) break :find_spec s;
                     };
                     break :find_spec revo.baselib.specs.findFn(name);
@@ -1911,20 +1936,6 @@ const SemanticChecker = struct {
         const assign = arg.expr.assign_expr;
         if (assign.target.expr != .ident) return null;
         return assign.target.expr.ident;
-    }
-
-    fn findMethodByNameAndTarget(name: []const u8, target: revo.baselib.host.ParamType) ?*const revo.baselib.specs.FnSpec {
-        for (revo.baselib.specs.full_specs) |group| {
-            for (group) |*spec| {
-                if (spec.is_type) continue;
-                if (!std.mem.eql(u8, spec.name, name)) continue;
-                const head = spec.head;
-                if (head.kind == .method) {
-                    if (head.target) |t| if (std.meta.activeTag(t) == std.meta.activeTag(target)) return spec;
-                }
-            }
-        }
-        return null;
     }
 
     fn findModuleByNameAndTarget(name: []const u8, target: revo.baselib.host.ParamType) ?*const revo.baselib.specs.FnSpec {

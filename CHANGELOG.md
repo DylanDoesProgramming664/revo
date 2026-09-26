@@ -13,6 +13,9 @@ tuples and structs are gone now, most breaking change yet
 
 ### Added
 
+- lsp hover on baselib module names shows a member card with the module doc
+- lsp hover on qualified members (`math.floor`) prefers the named module over
+  the unqualified first match
 - baselib-style native extension api, `revo.ext`
   - see `examples/foreign/raylib`
 - structural table types: annotate tables by shape with `{ name: string, age: num }`
@@ -219,6 +222,8 @@ tuples and structs are gone now, most breaking change yet
 
 ### Removed
 
+- `.d.rv` files are gone, no backcompat
+  see `extensions/foreign/*` and `src/baselib/base.rv`
 - loop-accumulator promotion pass
   only fired on simple linear `r = r + 1` chains and i didnt know what i was doing when i made it
 - struct type, `struct Name { ... }`, is gone
@@ -284,8 +289,8 @@ tuples and structs are gone now, most breaking change yet
   and `:false`) as the value instead of comparing against `:true`
 - `promote.zig`'s `[8]Register` buffer was too small for `call_field`
   instructions with too many args
-- `const x = import "raylib.so"` named imports now get the fields from the module's
-  `.d.rv` manifest just like the normal `import "raylib.so"`
+- `const x = import "raylib.so"` named imports resolve like a plain
+  `import "raylib.so"`
 - lsp signatures show generics and optional params:
   `fn id<T>(v: T) -> T`, `f(a: num, b?: num)` in hover and signature help
 - `revo -e` no longer runs piped stdin as a program first, stdin stays available

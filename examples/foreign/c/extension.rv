@@ -1,21 +1,24 @@
-import "extension.so"
+const extension: {
+  #* greets the user, like "hello, <name>!" *#
+  greet: fn(name: string) -> string,
+  #* adds a + b *#
+  add: fn(a: number, b: number) -> number,
+  #* echoes the string back *#
+  echo: fn(s: string) -> string,
+  #* length of a c string *#
+  strlen: fn(s: string) -> number,
+  #* type tag of v as a number *#
+  typ: fn(v: any) -> number,
+  #* regex match, hand rolled in c *#
+  regex: fn(pattern: string, text: string) -> bool,
+  #* joins parts with sep *#
+  concat: fn(parts: table, sep: string) -> string,
+  #* new counter handle in c memory, opaque until you ascribe it *#
+  total_new: fn() -> any,
+  #* adds to the counter, the handle is a resource and checks as one *#
+  total_add: fn(handle: resource, amount: number) -> number,
+  #* frees the counter handle *#
+  total_free: fn(handle: any),
+} = import "./extension.so"
 
-# the sibling extension.d.rv is the interface: every call is typed against
-# it, and all bindings land in this module's table (sig placement is ignored
-# while the manifest exists)
-print(extension.greet("world"))
-print(extension.add(3, 4))
-print(extension.echo("hello"))
-print(extension.strlen("hello"))
-print(extension.typ(5))
-print(extension.regex("^h", "hello"))
-
-print(extension.concat({"a", "b", "c"}, "-"))
-print(extension.concat({"revo", "rules"}, ", "))
-
-# resource demo ::: the counter lives in malloc'd c memory, revo holds the handle
-let t = extension.total_new()
-print(typeof(t))  # :resource
-print(extension.total_add(t, 5))
-print(extension.total_add(t, 7))
-extension.total_free(t)
+extension

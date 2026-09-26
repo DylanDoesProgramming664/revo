@@ -6,7 +6,7 @@ const rl = import "./raylib"
 !#
 
 # this could all be a let rl = do...end block, if you want some scoping
-const cffi = import "./cffi.so"
+const cffi = import "./cffi.rv"
 let lib = cffi.load("./libraylib.so")
 print(lib)
 

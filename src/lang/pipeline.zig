@@ -114,14 +114,8 @@ pub fn buildWithWarnings(vm: *VM, source: Source, opts: BuildOptions, warnings: 
             if (comptime !revo.is_freestanding) {
                 const resolved = (import_scan.resolveModuleFile(self.vm, path) catch return null) orelse return null;
                 defer self.vm.runtime.alloc.free(resolved);
-                // shared libs carry their sigs as data, instead of source source
-                // a sibling `lib.d.rv` manifest is the type interface and required for
-                // typed imports; without one the module resolves untyped
+                // shared libs are opaque to the compiler; the module resolves untyped
                 if (std.mem.endsWith(u8, resolved, ".so") or std.mem.endsWith(u8, resolved, ".dylib")) {
-                    if (revo.extensionManifestFor(self.vm.runtime.io, a, resolved) catch null) |manifest| {
-                        defer a.free(manifest);
-                        return std.Io.Dir.cwd().readFileAlloc(self.vm.runtime.io, manifest, a, std.Io.Limit.unlimited) catch null;
-                    }
                     return null;
                 }
                 if (self.cache.lookup(resolved)) |hit| return a.dupe(u8, hit) catch null;
@@ -335,8 +329,8 @@ pub fn parse(allocator: std.mem.Allocator, source: Source, opts: ParseOptions) !
         };
     }
 
-    // manifest macros replace the old fixed prelude: same merge shape,
-    // authority lives in sigs/*.d.rv instead of a lang-side string.
+    // baselib macros merge as preludes: same merge shape,
+    // authority lives in sigs/std.rv instead of a lang-side string.
     // the list is permanent like full_specs, never freed.
     const macro_srcs = try revo.baselib.specs.macroSources(allocator);
     var preludes = try std.ArrayList(*Node).initCapacity(allocator, macro_srcs.len);

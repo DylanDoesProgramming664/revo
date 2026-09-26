@@ -221,8 +221,8 @@ static int total_free_fn(void *vm, size_t argc, RevoValue *argv,
   return REVO_OK;
 }
 
-// the type interface lives in the sibling extension.d.rv manifest, not here.
-// every binding lands in this module's table at import time
+// every binding lands flat in the module table at import time.
+// callers ascribe the entries they use; types live in revo, not here.
 __attribute__((visibility("default"))) const RevoBinding revo_bindings[] = {
     {"greet", greet_fn},
     {"add", add_fn},

@@ -934,7 +934,7 @@ fn parseDecl(self: *Parser, start: Token) anyerror!*Node {
         .kw_type => blk: {
             if (!self.check(.ident)) return error.UnexpectedToken;
             const first = try self.expectIdent();
-            const hh = try self.parseDeclareHead(first, false);
+            const hh = try self.parseDeclareHead(first);
 
             _ = try self.expect(.assign);
             const type_expr = try self.parseTypeExpr();
@@ -960,7 +960,7 @@ fn parseDecl(self: *Parser, start: Token) anyerror!*Node {
                 else => return error.UnexpectedToken,
             };
             const first = self.advance();
-            const hh = try self.parseDeclareHead(first, true);
+            const hh = try self.parseDeclareHead(first);
 
             _ = try self.expect(.assign);
             const type_expr = try self.parseTypeExpr();
@@ -984,25 +984,11 @@ fn parseDecl(self: *Parser, start: Token) anyerror!*Node {
     };
 }
 
-/// shared `Name`, `Target:key`, `a.b.c`, `<T>`, etc. for `declare` and `type`
+/// shared `Name`, `a.b.c`, `<T>`, etc. for `declare` and `type`
 ///   so that dotted type heads parse identically
-///
-/// `allow_core` is false for `type`:: metatable slots are values, not types.
-fn parseDeclareHead(self: *Parser, first: Token, allow_core: bool) !struct { head: ?ast.DeclareHead, tps: []const []const u8 } {
-    // peek first so a rejected core head leaves no partial consumption
-    if (!allow_core and (self.check(.atom) or self.check(.colon))) return error.UnexpectedToken;
+fn parseDeclareHead(self: *Parser, first: Token) !struct { head: ?ast.DeclareHead, tps: []const []const u8 } {
     var head: ?ast.DeclareHead = null;
-    if (self.check(.atom)) {
-        // `string:__index`
-        //   the lexer merges `:` + key into one atom
-        const key = self.advance();
-        head = .{ .core = .{ .target = first.text, .key = key.text[1..] } };
-    } else if (self.match(.colon)) {
-        // `string:__index`
-        //   a core-key slot on a target type
-        const key = try self.expectIdent();
-        head = .{ .core = .{ .target = first.text, .key = key.text } };
-    } else if (self.check(.dot)) {
+    if (self.check(.dot)) {
         // `fs.open`, `uri.Hi`
         //   a dotted module path
         var segs = std.ArrayList([]const u8).initCapacity(self.alloc, 2) catch return error.OutOfMemory;
@@ -1248,13 +1234,7 @@ fn parseImport(self: *Parser, start: Token) anyerror!*Node {
     // import "path" autobind
     {
         const path_token = try self.expect(.string);
-        const name = try self.alloc.dupe(
-            u8,
-            if (std.mem.endsWith(u8, path_token.text, ".d.rv"))
-                path_token.text[0 .. path_token.text.len - ".d.rv".len]
-            else
-                std.Io.Dir.path.stem(path_token.text),
-        );
+        const name = try self.alloc.dupe(u8, std.Io.Dir.path.stem(path_token.text));
         return self.allocExpr(
             Span.merge(start.span(), path_token.span()),
             .{ .import_stmt = .{ .name = name, .path = path_token.text } },

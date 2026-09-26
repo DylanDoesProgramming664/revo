@@ -167,6 +167,34 @@ test "plain table uses baselib method" {
     , 3);
 }
 
+//
+// merge-method pinning: colon calls resolve through the type's module table
+//
+
+test "colon calls resolve string members with self prepended" {
+    try t.topNumber("\"abc\":len()", 3);
+    try t.topString(
+        \\ "abc":upper()
+    , "ABC");
+}
+
+test "colon calls resolve number members" {
+    try t.topNumber("(5):floor()", 5);
+}
+
+test "colon calls resolve generic table members" {
+    try t.topNumber("{1, 2}:at(0)", 1);
+}
+
+test "colon calls enforce arity at compile time" {
+    try t.expectSemanticError("\"abc\":split()");
+    try t.expectSemanticError("\"abc\":len(\"x\")");
+}
+
+test "colon calls enforce arg types at compile time" {
+    try t.expectSemanticError("\"abc\":split(42)");
+}
+
 test "string-key index does not shadow baselib method" {
     try t.topNumber(
         \\ const t = {1, 2, 3}
@@ -3297,6 +3325,29 @@ test "import typed function with no type annotations falls through" {
     , 42);
 }
 
+test "ascribed pub re-export types the import" {
+    var m = try t.TmpMod.init(&.{
+        .{ .path = "native.rv", .data =
+        \\ {
+        \\   add = fn(a, b) do a + b end,
+        \\ }
+        },
+        .{ .path = "wrapper.rv", .data =
+        \\ const n = import "./native.rv"
+        \\ pub const add: fn(a: number, b: number) -> number = n.add
+        },
+    });
+    defer m.deinit();
+    try t.topNumberInDir(m.dir,
+        \\ const w = import "./wrapper.rv"
+        \\ w.add(19, 23)
+    , 42);
+    try t.expectCompileErrorInDir(m.dir,
+        \\ const w = import "./wrapper.rv"
+        \\ w.add("x", 2)
+    );
+}
+
 //
 // typed compilation through the vm; integration coverage for the
 // type universe, kept with the language suite instead of types.zig
@@ -4820,6 +4871,20 @@ test "baselib sigs: module result flows through match" {
     , "FileNotFound");
 }
 
+test "baselib sigs: iter surface names what the impl takes" {
+    // `zip` opens its tail after naming two, so one is a build error and not
+    // a runtime one. `count` takes one optional pred, it is not a variadic
+    try t.expectSemanticError("iter.zip({1, 2})");
+    try t.expectSemanticError("iter.count({1, 2, 3}, fn(x) x > 1, 9)");
+    try t.expectSemanticError("iter.count({1, 2, 3}, 5)");
+    // `to_iter` is a global, the compiler bakes that name into `|> to_iter`.
+    // module fields are not typed, so the dead member is a runtime miss
+    try t.expectRuntimeError("iter.to_iter({1, 2})", .NotAFunction);
+    try t.topAtom("iter.collect(iter.zip({1, 2}, {3, 4})) == { {1, 3}, {2, 4} }", "true");
+    try t.topNumber("iter.count({1, 2, 3, 4}, fn(x) x > 2)", 2);
+    try t.topAtom("iter.collect(to_iter({1, 2})) == {1, 2}", "true");
+}
+
 test "baselib sigs: local binding shadows baselib module" {
     // `fs` here is a local table, not the module
     // no baselib sig is applied, and the missing field fails at compile time
@@ -4942,41 +5007,6 @@ test "dotted pub type resolves bare in the same file" {
     , 8080);
 }
 
-test "dotted pub type in .d.rv resolves qualified by import" {
-    var m = try t.TmpMod.init(&.{
-        .{ .path = "shapes.d.rv", .data = "pub type geo.Point = num\n" },
-    });
-    defer m.deinit();
-    try t.topNumberInDir(
-        m.dir,
-        "import \"shapes.d.rv\"\nconst p: shapes.Point = 7\np\n",
-        7,
-    );
-    try t.expectCompileErrorInDir(
-        m.dir,
-        "import \"shapes.d.rv\"\nconst p: shapes.Point = \"x\"\n",
-    );
-}
-
-test "manifest dotted proc macros rescope under the import name" {
-    var m = try t.TmpMod.init(&.{
-        .{ .path = "m.d.rv", .data =
-        \\pub proc q.add3!(iter) do
-        \\  let a = iter:next()
-        \\  let b = iter:next()
-        \\  let c = iter:next()
-        \\  {{:binary, :add, {:binary, :add, a, b}, c}}
-        \\end
-        },
-    });
-    defer m.deinit();
-    try t.topNumberInDir(
-        m.dir,
-        "import \"m.d.rv\"\nm.add3!(10, 20, 10)\n",
-        40,
-    );
-}
-
 test "baselib dotted type resolves qualified, unknown qualified errors" {
     try t.topNumber(
         \\ const u: uri.Uri = { scheme = "https", host = "example.com", path = "/hi/there", query = { "search", "page" = 3 } }
@@ -4990,24 +5020,46 @@ test "baselib dotted type resolves qualified, unknown qualified errors" {
     );
 }
 
-test ".d.rv import typechecks calls and never executes the file" {
+test "a module returning one ascribed table types its members" {
     var m = try t.TmpMod.init(&.{
-        .{ .path = "audio.d.rv", .data = "pub declare ring = fn(volume: num, label: string) -> bool\nundefined_poison()\n" },
+        .{
+            .path = "iface.rv",
+            .data =
+            \\const iface: {
+            \\  add: fn(a: number, b: number) -> number,
+            \\  greet: fn(name: string) -> string,
+            \\} = { add = fn(a, b) a + b, greet = fn(n) "hi #{n}" }
+            \\iface
+            ,
+        },
     });
     defer m.deinit();
-    // build succeeds (semantic extracted the sig); runtime only fails on the
-    // empty module table - the poison call inside the file never ran
-    try t.expectRuntimeErrorInDir(
+
+    // the table is the module, so members carry their declared sigs
+    try t.topNumberInDir(
         m.dir,
-        "import \"audio.d.rv\"\naudio.ring(1, \"x\")\n",
-        .NotAFunction,
+        "const iface = import \"./iface.rv\"\niface.add(3, 4)\n",
+        7,
+    );
+    try t.topStringInDir(
+        m.dir,
+        "const iface = import \"./iface.rv\"\niface.greet(\"you\")\n",
+        "hi you",
+    );
+    // wrong arg type and wrong arity both come from the ascription
+    try t.expectCompileErrorInDir(
+        m.dir,
+        "const iface = import \"./iface.rv\"\niface.add(\"x\", 4)\n",
+    );
+    try t.expectCompileErrorInDir(
+        m.dir,
+        "const iface = import \"./iface.rv\"\niface.add(1)\n",
     );
 }
 
-test "manifest .d.rv types .so imports, sig fallback without one" {
+test ".so imports are untyped on their own" {
     var m = try t.TmpMod.init(&.{
         .{ .path = "fake.so", .data = "" },
-        .{ .path = "fake.d.rv", .data = "pub declare open = fn(path: string) -> string\n" },
     });
     defer m.deinit();
     const source_name = try std.Io.Dir.path.join(std.testing.allocator, &.{ m.dir, "<source>" });
@@ -5015,23 +5067,6 @@ test "manifest .d.rv types .so imports, sig fallback without one" {
 
     const source = "import \"fake.so\"\nfake.open(5)\n";
 
-    // manifest present: the wrong-arg call is a compile error
-    {
-        var vm = try VM.init(t.runtime());
-        defer vm.deinit();
-        vm.import_dir = m.dir;
-        const result = try lang.build(&vm, .{ .name = source_name, .text = source }, .{ .install_debug_info = false });
-        switch (result) {
-            .ok => return error.ExpectedCompileFailure,
-            .err => |f| switch (f) {
-                .semantic, .compile => vm.runtime.resetDiagArena(),
-                .expand, .parse => return error.ExpectedCompileFailure,
-            },
-        }
-    }
-
-    // manifest gone: no sigs to synthesize from, the call compiles untyped
-    try m.tmp.dir.deleteFile(std.testing.io, "fake.d.rv");
     {
         var vm = try VM.init(t.runtime());
         defer vm.deinit();

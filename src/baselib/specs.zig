@@ -1,30 +1,24 @@
 //!
 //! welcome to baselib as data
 //!
-//! ~ sigs and docs live in `src/baselib/sigs/*.d.rv`
-//!   one file per group
-//! ~ `#* ... *#` blocks are markdown docs (bare ``` fences for code)
-//! ~ `pub declare <head> = <type>` lines are sigs, `pub type N = <type>`
-//!   lines are type-only aliases with no impl
-//! ~ `#`/`##` lines are editorial comments
-//! ~ heads may carry a `<T>` generic suffix
-//! ~ any `__` key lands in a metatable automatically
+//! ~ sigs and docs live in `src/baselib/sigs/std.rv`
+//!   one `pub declare mod = { ... }` table per module in a single file
+//!   (root/os globals and `pub type` aliases stay flat)
 //! ~ zig supplies impls only (`pub const impls: []const specs.Impl` per file)
-//! ~ each spec stores the whole RHS type once; sig text, variadic-ness,
-//!   and core keys derive from it, so new type shapes need no new fields
-//!
+//! ~ each spec stores the whole RHS type once and derives sig text,
+//!   variadic-ness and core keys from it, so new shapes need no new fields
 //! ~ `loadAllSpecs` merges the two at boot
 //!   a missing or orphaned impl is a hard error,
 //!   so docs can't drift from the runtime
-//! ~ the primitive type metatable *is* the module table:
-//!   dynamic `x:method()` dispatch gets a single direct `getRaw`,
-//!   numeric indexing the one exception via the `__index` native
-//!   stashed inside the module table
+//! ~ the primitive type metatable *is* the module table, so dynamic
+//!   `x:method()` dispatch is one direct `getRaw`; numeric indexing is
+//!   the exception, via the `__index` native stashed inside it
 //!
 
 const std = @import("std");
 
 const ast = @import("../lang/ast.zig");
+const builtin = @import("builtin");
 const revo = @import("../root.zig");
 const Value = revo.Value;
 const root = @import("root.zig");
@@ -43,39 +37,44 @@ pub const Impl = struct {
 pub const Group = struct {
     name: []const u8,
     src: []const u8,
-    impls: []const Impl,
+    /// searched in order, keeping the old pairing order; disabled modules
+    ///   contribute empty slices
+    impls: []const []const Impl,
 
-    fn init(name: []const u8, src: []const u8, impls: []const Impl) Group {
+    fn init(name: []const u8, src: []const u8, impls: []const []const Impl) Group {
         return .{ .name = name, .src = src, .impls = impls };
     }
 };
 
-/// the `re` group is dropped at comptime when regex is off so the
-/// mvzr/io chain never reaches targets like freestanding wasm
+/// the whole surface in one file; `re`/`ffi` specs are filtered at load when
+/// regex/ffi are off so the mvzr/io chain never reaches targets like
+/// freestanding wasm
 pub const groups: []const Group = &.{
-    Group.init("root", @embedFile("sigs/root.d.rv"), @import("root.zig").root_impls),
-    Group.init("os", @embedFile("sigs/os.d.rv"), @import("root.zig").os_impls),
-    Group.init("re", @embedFile("sigs/re.d.rv"), if (regex_on) @import("regex.zig").impls else &.{}),
-    Group.init("ffi", @embedFile("sigs/ffi.d.rv"), if (ffi_on) @import("ffi_lib.zig").impls else &.{}),
-    Group.init("number", @embedFile("sigs/number.d.rv"), @import("number.zig").impls),
-    Group.init("string", @embedFile("sigs/string.d.rv"), @import("string.zig").impls),
-    Group.init("table", @embedFile("sigs/table.d.rv"), @import("table.zig").impls),
-    Group.init("dataframe", @embedFile("sigs/dataframe.d.rv"), @import("dataframe.zig").impls),
-    Group.init("iter", @embedFile("sigs/iter.d.rv"), @import("iter.zig").impls),
-    Group.init("math", @embedFile("sigs/math.d.rv"), @import("math.zig").impls),
-    Group.init("stats", @embedFile("sigs/stats.d.rv"), @import("stats.zig").impls),
-    Group.init("json", @embedFile("sigs/json.d.rv"), @import("json.zig").impls),
-    Group.init("csv", @embedFile("sigs/csv.d.rv"), @import("csv.zig").impls),
-    Group.init("time", @embedFile("sigs/time.d.rv"), @import("time.zig").impls),
-    Group.init("datetime", @embedFile("sigs/datetime.d.rv"), @import("datetime.zig").impls),
-    Group.init("net", @embedFile("sigs/net.d.rv"), @import("net.zig").impls),
-    Group.init("http", @embedFile("sigs/http.d.rv"), @import("http.zig").impls),
-    Group.init("uri", @embedFile("sigs/uri.d.rv"), @import("uri.zig").impls),
-    Group.init("fs", @embedFile("sigs/fs.d.rv"), @import("fs.zig").impls),
-    Group.init("revo", @embedFile("sigs/revo.d.rv"), @import("revo.zig").impls),
-    Group.init("compress", @embedFile("sigs/compress.d.rv"), @import("compress.zig").impls),
-    Group.init("rng", @embedFile("sigs/rng.d.rv"), @import("rng.zig").impls),
-    Group.init("argparse", @embedFile("sigs/argparse.d.rv"), @import("argparse.zig").impls),
+    Group.init("std", @embedFile("sigs/std.rv"), &.{
+        @import("root.zig").root_impls,
+        @import("root.zig").os_impls,
+        if (regex_on) @import("regex.zig").impls else &.{},
+        if (ffi_on) @import("ffi_lib.zig").impls else &.{},
+        @import("number.zig").impls,
+        @import("string.zig").impls,
+        @import("table.zig").impls,
+        @import("dataframe.zig").impls,
+        @import("iter.zig").impls,
+        @import("math.zig").impls,
+        @import("stats.zig").impls,
+        @import("json.zig").impls,
+        @import("csv.zig").impls,
+        @import("time.zig").impls,
+        @import("datetime.zig").impls,
+        @import("net.zig").impls,
+        @import("http.zig").impls,
+        @import("uri.zig").impls,
+        @import("fs.zig").impls,
+        @import("revo.zig").impls,
+        @import("compress.zig").impls,
+        @import("rng.zig").impls,
+        @import("argparse.zig").impls,
+    }),
 };
 
 /// merged, runtime view of the baselib surface; built by `loadAllSpecs`
@@ -100,15 +99,14 @@ pub fn loadAllSpecs(caller_alloc: std.mem.Allocator) ![]const []const FnSpec {
         loaded.deinit(pa);
     }
     for (groups) |ig| {
-        // regex-off rows
-        //    (and any future all-types group)
-        // carry no impls and stay out of every surface instead of erroring
-        if (ig.impls.len == 0) continue;
-        const specs = parseGroup(pa, ig.src) catch |err| {
+        var specs = parseGroup(pa, ig.src) catch |err| {
             if (comptime !revo.is_freestanding)
                 std.debug.print("iface group '{s}' failed to parse: {s}\n", .{ ig.name, @errorName(err) });
             return err;
         };
+        // compiled-out modules (re/ffi) stay out of every surface instead of
+        // erroring; the old skip-empty-group rule, now spec-level
+        specs = try dropDisabledModules(pa, specs);
         for (specs, 0..) |*s, i| {
             if (s.is_type) continue;
             var k: usize = 0;
@@ -128,9 +126,12 @@ pub fn loadAllSpecs(caller_alloc: std.mem.Allocator) ![]const []const FnSpec {
                 }
                 @panic("missing an std def");
             };
+            try checkImplSig(s.*);
         }
-        for (ig.impls) |imp| {
-            if (findSpec(specs, imp.name) == null) return error.StdlibImplUnused;
+        for (ig.impls) |slice| {
+            for (slice) |imp| {
+                if (findSpec(specs, imp.name) == null) return error.StdlibImplUnused;
+            }
         }
         try loaded.append(pa, specs);
     }
@@ -143,34 +144,6 @@ pub fn loadAllSpecs(caller_alloc: std.mem.Allocator) ![]const []const FnSpec {
 /// permanent cache
 /// the cache lives in page_allocator so no debug allocator tracks it
 pub fn freeLoadedSpecs(_: std.mem.Allocator, _: []const []const FnSpec) void {}
-
-/// extension version of the `loadAllSpecs` boot check
-pub fn validateExtensionSpecs(
-    alloc: std.mem.Allocator,
-    manifest_src: []const u8,
-    bindings: []const Impl,
-) !void {
-    const specs = try parseGroup(alloc, manifest_src);
-    defer {
-        for (specs) |s| s.deinit(alloc);
-        alloc.free(specs);
-    }
-
-    for (specs, 0..) |*s, i| {
-        if (s.is_type) continue;
-        var k: usize = 0;
-
-        if (i > 0) for (specs[0..i]) |other| {
-            if (other.is_type) continue;
-            if (std.mem.eql(u8, other.name, s.name)) k += 1;
-        };
-        if (implFor(bindings, s, k) == null) return error.ExtensionBindingMissing;
-    }
-
-    for (bindings) |imp| {
-        if (findSpec(specs, imp.name) == null) return error.ExtensionBindingUnused;
-    }
-}
 
 /// spans of every `pub macro` / `pub proc` decl in one source
 /// . span values only
@@ -228,29 +201,121 @@ pub fn macroSources(caller_alloc: std.mem.Allocator) ![]const []const u8 {
 }
 
 /// registry key for impl pairing
-/// , derived from the head so new heads and new `__` keys work without touching this
-/// : `fs.open`, `string:len`
+/// , derived from the head: `fs.open`, else the bare name
 fn headKey(spec: *const FnSpec, buf: []u8) []const u8 {
     return switch (spec.head.kind) {
         .global => spec.name,
         .namespaced => std.fmt.bufPrint(buf, "{s}.{s}", .{ spec.head.module.?, spec.name }) catch spec.name,
-        .method => std.fmt.bufPrint(buf, "{s}:{s}", .{ spec.head.target_name.?, spec.name }) catch spec.name,
     };
 }
 
 /// impl registered under the full head like `fs.stat` pairs outright
-/// otherwise the k-th spec with this name takes the k-th bare-named impl
-fn implFor(impls: []const Impl, spec: *const FnSpec, k: usize) ?HostFunc {
+/// otherwise the k-th spec with this name takes the k-th bare-named impl.
+/// slices are searched in group order, preserving the old per-group pairing.
+fn implFor(impls: []const []const Impl, spec: *const FnSpec, k: usize) ?HostFunc {
     var key_buf: [256]u8 = undefined;
     const head = headKey(spec, &key_buf);
-    for (impls) |imp| if (std.mem.eql(u8, imp.name, head)) return imp.f;
+    for (impls) |slice| {
+        for (slice) |imp| if (std.mem.eql(u8, imp.name, head)) return imp.f;
+    }
     var seen: usize = 0;
-    for (impls) |imp| {
-        if (!std.mem.eql(u8, imp.name, spec.name)) continue;
-        if (seen == k) return imp.f;
-        seen += 1;
+    for (impls) |slice| {
+        for (slice) |imp| {
+            if (!std.mem.eql(u8, imp.name, spec.name)) continue;
+            if (seen == k) return imp.f;
+            seen += 1;
+        }
     }
     return null;
+}
+
+/// the surface and the zig impl must agree on the shape
+///
+/// only two things are actually promised, so only two are checked:
+///   the impl never needs more args than the surface lets you pass,
+///   and a declared `...` really is open ended
+///
+/// optionals are exempt on purpose: the surface spells them nilable
+/// (`mode: string?`) where the host marks them optional or variadic,
+/// and both are the same promise
+const checkable_types: std.StaticStringMap(ParamType) = std.StaticStringMap(ParamType).initComptime(.{
+    .{ "number", .number },
+    .{ "num", .number },
+    .{ "int", .number },
+    .{ "string", .string },
+    .{ "bool", .bool },
+    .{ "atom", .atom },
+    .{ "table", .table },
+    .{ "function", .function },
+    .{ "resource", .resource },
+});
+
+/// stderr is the test runner's own channel, a print from inside a test
+///   corrupts the build-server protocol, so tests stay quiet
+fn note(comptime format: []const u8, args: anytype) void {
+    if (builtin.is_test) return;
+    std.debug.print(format, args);
+}
+
+/// null when the declared type is richer than a ParamType can say
+fn declaredParamType(te: ?*ast.TypeExpr) ?ParamType {
+    const t = te orelse return null;
+    return switch (t.kind) {
+        .named => |n| checkable_types.get(n),
+        .atom => .atom,
+        else => null,
+    };
+}
+
+fn checkImplSig(spec: FnSpec) !void {
+    // metatable slots prepend the receiver and modules disagree on whether
+    // the surface spells it out, so only plain members are comparable
+    if (coreKey(&spec) != null) return;
+    const fnty = switch (spec.type.kind) {
+        .function => |f| f,
+        else => return,
+    };
+    var key_buf: [256]u8 = undefined;
+    const key = headKey(&spec, &key_buf);
+    const params = fnty.params;
+    const variadic = params.len > 0 and params[params.len - 1].variadic;
+    if (spec.f.arity > params.len or (variadic and !spec.f.variadic)) {
+        note("sig shape mismatch on {s}: surface allows {d} params{s}, impl needs {d}\n", .{
+            key, params.len, if (variadic) " variadic" else "", spec.f.arity,
+        });
+        return error.ImplSigMismatch;
+    }
+    // a variadic impl types only its fixed prefix, the open tail rides along
+    const typed_n = @min(params.len, spec.f.param_types.len);
+    for (params[0..typed_n], spec.f.param_types[0..typed_n]) |p, want| {
+        // `.any` on the impl side means it range-checks the arg itself
+        if (want.toTag() == (@as(ParamType, .any)).toTag()) continue;
+        const got = declaredParamType(p.type_name) orelse continue;
+        if (got.toTag() == want.toTag()) continue;
+        note("sig param mismatch on {s}: `{s}` declares {s}, impl wants {s}\n", .{
+            key, p.name, @tagName(got), @tagName(want),
+        });
+        return error.ImplSigMismatch;
+    }
+}
+
+/// drop specs of compiled-out modules; `re`/`ffi` declare no globals or
+/// methods, so a namespaced-module match is exact
+fn dropDisabledModules(alloc: std.mem.Allocator, specs: []FnSpec) ![]FnSpec {
+    var kept = std.ArrayList(FnSpec).empty;
+    errdefer kept.deinit(alloc);
+    for (specs) |s| {
+        const disabled = s.head.kind == .namespaced and s.head.module != null and
+            ((std.mem.eql(u8, s.head.module.?, "re") and !regex_on) or
+                (std.mem.eql(u8, s.head.module.?, "ffi") and !ffi_on));
+        if (disabled) {
+            s.deinit(alloc);
+            continue;
+        }
+        try kept.append(alloc, s);
+    }
+    alloc.free(specs);
+    return kept.toOwnedSlice(alloc);
 }
 
 fn findSpec(specs: []const FnSpec, impl_name: []const u8) ?*const FnSpec {
@@ -271,6 +336,16 @@ pub fn find(name: []const u8) ?*const FnSpec {
     return null;
 }
 
+/// true when `name` heads a baselib module table; drives the module hover card
+pub fn isModule(name: []const u8) bool {
+    for (full_specs) |group| for (group) |*spec| {
+        if (spec.head.kind == .namespaced) if (spec.head.module) |m| {
+            if (std.mem.eql(u8, m, name)) return true;
+        };
+    };
+    return false;
+}
+
 /// first callable match wins
 /// ; type-only aliases are not values
 pub fn findFn(name: []const u8) ?*const FnSpec {
@@ -282,13 +357,13 @@ pub fn findFn(name: []const u8) ?*const FnSpec {
 }
 
 /// qualified lookup for help + repl
-/// `fs.open`, `file.stat`, `string:len`
+/// `fs.open`, `file.stat`
 pub fn findQualified(name: []const u8) ?*const FnSpec {
     var sep: ?usize = null;
     var i = name.len;
     while (i > 0) {
         i -= 1;
-        if (name[i] == '.' or name[i] == ':') {
+        if (name[i] == '.') {
             sep = i;
             break;
         }
@@ -301,15 +376,9 @@ pub fn findQualified(name: []const u8) ?*const FnSpec {
         for (full_specs) |group| for (group) |*spec| {
             if (!std.mem.eql(u8, spec.name, member)) continue;
 
-            switch (spec.head.kind) {
-                .namespaced => if (spec.head.module) |m| {
-                    if (std.mem.eql(u8, m, mod)) return spec;
-                },
-                .method => if (spec.head.target_name) |t| {
-                    if (std.mem.eql(u8, t, mod)) return spec;
-                },
-                .global => {},
-            }
+            if (spec.head.kind == .namespaced) if (spec.head.module) |m| {
+                if (std.mem.eql(u8, m, mod)) return spec;
+            };
         };
         return null;
     }
@@ -320,36 +389,14 @@ pub fn findQualified(name: []const u8) ?*const FnSpec {
     return null;
 }
 
-/// leading `#! ... !#` doc of group declaring module `mod`
-/// , "" when nothing declares it
-///   ; borrowed from embedded src
+/// the doc of a module table, "" when it has none; borrowed from the sig source
 pub fn moduleDoc(mod: []const u8) []const u8 {
-    const src = blk: {
-        var gi: usize = 0;
-        for (full_specs) |specs| {
-            while (gi < groups.len and groups[gi].impls.len == 0)
-                gi += 1;
-
-            if (gi >= groups.len) return "";
-            const src = groups[gi].src;
-            gi += 1;
-
-            for (specs) |*s| {
-                switch (s.head.kind) {
-                    .namespaced => if (s.head.module) |m| {
-                        if (std.mem.eql(u8, m, mod)) break :blk src;
-                    },
-                    .method => if (s.head.target_name) |t| {
-                        if (std.mem.eql(u8, t, mod)) break :blk src;
-                    },
-                    .global => {},
-                }
-            }
-        }
-        return "";
+    for (full_specs) |group| for (group) |*spec| {
+        if (spec.head.kind == .namespaced) if (spec.head.module) |m| {
+            if (std.mem.eql(u8, m, mod)) return spec.module_doc;
+        };
     };
-
-    return revo.lang.docgen.moduleDoc(src) catch "";
+    return "";
 }
 
 /// `fs.open(path: string) -> !table` for fns,
@@ -357,18 +404,14 @@ pub fn moduleDoc(mod: []const u8) []const u8 {
 /// . computed from the stored type, never stored
 /// , so new type shapes render without new code
 pub fn renderSignature(w: *std.Io.Writer, spec: FnSpec) !void {
-    try renderSignatureInner(w, spec, false);
+    try renderSignatureInner(w, spec);
 }
 
-/// head plus `<T>` suffix: `fs.open`, `string:len`, `table.unwrap_err<T>`
-fn renderHead(w: *std.Io.Writer, spec: FnSpec, strip_method: bool) !void {
+/// head plus `<T>` suffix: `fs.open`, `table.unwrap_err<T>`
+fn renderHead(w: *std.Io.Writer, spec: FnSpec) !void {
     switch (spec.head.kind) {
         .global => try w.writeAll(spec.name),
         .namespaced => try w.print("{s}.{s}", .{ spec.head.module.?, spec.name }),
-        .method => if (strip_method)
-            try w.writeAll(spec.name)
-        else
-            try w.print("{s}:{s}", .{ spec.head.target_name.?, spec.name }),
     }
     if (spec.type_params.len > 0) {
         try w.writeByte('<');
@@ -380,14 +423,8 @@ fn renderHead(w: *std.Io.Writer, spec: FnSpec, strip_method: bool) !void {
     }
 }
 
-/// method-group display
-/// : `len(self: string)` instead of `string:len(self: string)`
-pub fn renderSignatureStripMethod(w: *std.Io.Writer, spec: FnSpec) !void {
-    try renderSignatureInner(w, spec, true);
-}
-
-fn renderSignatureInner(w: *std.Io.Writer, spec: FnSpec, strip_method: bool) !void {
-    try renderHead(w, spec, strip_method);
+fn renderSignatureInner(w: *std.Io.Writer, spec: FnSpec) !void {
+    try renderHead(w, spec);
     if (spec.is_type) return;
     const f = spec.type.kind.function;
     try w.writeAll("(");
@@ -422,18 +459,15 @@ pub fn coreKey(spec: *const FnSpec) ?revo.CoreAtoms {
     return std.meta.stringToEnum(revo.CoreAtoms, spec.name);
 }
 
-pub const FnKind = enum { global, namespaced, method };
+pub const FnKind = enum { global, namespaced };
 
 /// who a spec belongs to, derived once from the declare head at parse time
 pub const Head = struct {
     kind: FnKind,
     module: ?[]const u8 = null,
-    target: ?ParamType = null,
-    /// owned: `table` in `table:len`, for grouping display
-    target_name: ?[]const u8 = null,
 };
 
-/// one declaration from a `.d.rv` file
+/// one declaration from the sig surface (`sigs/std.rv`)
 pub const FnSpec = struct {
     name: []const u8,
     head: Head,
@@ -450,7 +484,6 @@ pub const FnSpec = struct {
         alloc.free(self.name);
 
         if (self.head.module) |m| alloc.free(m);
-        if (self.head.target_name) |t| alloc.free(t);
         for (self.type_params) |tp| alloc.free(tp);
         alloc.free(self.type_params);
 
@@ -461,7 +494,7 @@ pub const FnSpec = struct {
 
 // -- [iface] -----------------------------------------------------------------
 
-/// parse one `.d.rv` group and collect speacks
+/// parse one sig group and collect specs
 fn parseGroup(alloc: std.mem.Allocator, src: []const u8) ![]FnSpec {
     var arena = std.heap.ArenaAllocator.init(alloc);
     defer arena.deinit();
@@ -505,14 +538,14 @@ pub fn collectSpecs(alloc: std.mem.Allocator, node: *const revo.lang.Node, iface
                 else => continue,
             };
 
-            // stack shell
-            // : declSpec clones the tree, nothing borrowed escapes
+            // stack shell, declSpec clones what it keeps
             var shell = ast.TypeExpr{ .span = item.span, .kind = .{ .function = .{ .params = t.params, .return_type = t.return_type } } };
+            const segs = [_][]const u8{ ix.object.expr.ident, key };
             const synth = ast.TypeAlias{
                 .name = key,
                 .name_span = item.span,
                 .type_expr = &shell,
-                .declare_head = .{ .core = .{ .target = ix.object.expr.ident, .key = key } },
+                .declare_head = .{ .module = &segs },
             };
 
             try specs.append(alloc, try declSpec(alloc, synth, t.doc, false));
@@ -523,7 +556,13 @@ pub fn collectSpecs(alloc: std.mem.Allocator, node: *const revo.lang.Node, iface
         switch (d.inner.expr) {
             .type_alias => |t| {
                 if (d.kind == .declare_decl) {
-                    try specs.append(alloc, try declSpec(alloc, t, d.doc orelse t.doc, iface));
+                    // a module table desugars to one spec per field, sharing
+                    //   the dotted `MOD.field` head (pairing, docs, metatables)
+                    if (t.declare_head == null and t.type_expr.kind == .record) {
+                        try expandTableDeclare(alloc, &specs, t, iface, d.doc orelse t.doc);
+                    } else {
+                        try specs.append(alloc, try declSpec(alloc, t, d.doc orelse t.doc, iface));
+                    }
                 } else if (d.kind == .type_alias_decl and d.pub_) {
                     try specs.append(alloc, try typeSpec(alloc, t, d.doc orelse t.doc));
                 } else continue;
@@ -569,6 +608,49 @@ fn typeSpec(alloc: std.mem.Allocator, alias: ast.TypeAlias, doc: ?[]const u8) !F
     return declSpecInner(alloc, alias, doc, false, true);
 }
 
+fn expandTableDeclare(
+    alloc: std.mem.Allocator,
+    specs: *std.ArrayList(FnSpec),
+    t: ast.TypeAlias,
+    iface: bool,
+    module_doc: ?[]const u8,
+) !void {
+    if (t.declare_tps.len > 0) return error.DuplicateGenericParams;
+    const parent = t.name;
+
+    for (t.type_expr.kind.record) |f| {
+        // positional array entries (`{ number, number }`) are not members
+        if (f.name.len == 0) continue;
+        var all_digits = true;
+        for (f.name) |c| if (!std.ascii.isDigit(c)) {
+            all_digits = false;
+            break;
+        };
+
+        if (all_digits) continue;
+        const segs = try alloc.alloc([]const u8, 2);
+        defer alloc.free(segs);
+        segs[0] = parent;
+        segs[1] = f.name;
+
+        const synth = ast.TypeAlias{
+            .name = f.name,
+            .name_span = t.name_span,
+            .type_expr = f.type_expr,
+            .doc = f.doc,
+            .declare_head = .{ .module = segs },
+        };
+        // borrowed from src
+        var spec = if (f.type_expr.kind == .function)
+            try declSpec(alloc, synth, f.doc, iface)
+        else
+            // nested alias (`Stat: {...}`); same as `pub type MOD.Stat`
+            try typeSpec(alloc, synth, f.doc);
+        spec.module_doc = module_doc orelse "";
+        try specs.append(alloc, spec);
+    }
+}
+
 /// the single way declarations enter a spec
 fn declSpec(alloc: std.mem.Allocator, alias: ast.TypeAlias, doc: ?[]const u8, strict: bool) !FnSpec {
     return declSpecInner(alloc, alias, doc, strict, false);
@@ -583,10 +665,6 @@ fn declSpecInner(alloc: std.mem.Allocator, alias: ast.TypeAlias, doc: ?[]const u
     if (alias.declare_head) |dh| switch (dh) {
         .module => |segs| {
             head = .{ .kind = .namespaced, .module = try std.mem.join(alloc, ".", segs[0 .. segs.len - 1]) };
-        },
-        .core => |c| {
-            const target = root.host.paramTypeFromName(c.target) orelse return error.UnknownMethodTarget;
-            head = .{ .kind = .method, .target = target, .target_name = c.target };
         },
     };
     errdefer if (head.module) |m| alloc.free(m);
@@ -656,8 +734,6 @@ fn declSpecInner(alloc: std.mem.Allocator, alias: ast.TypeAlias, doc: ?[]const u
         .head = .{
             .kind = head.kind,
             .module = head.module,
-            .target = head.target,
-            .target_name = if (head.target_name) |t| try alloc.dupe(u8, t) else null,
         },
         .type_params = owned_tps,
         .type = type_tree,
@@ -699,7 +775,6 @@ pub fn skippableForDocs(err: anyerror) bool {
     return switch (err) {
         error.IfaceParseFailed,
         error.IfaceParamNotTyped,
-        error.UnknownMethodTarget,
         error.BadCoreKey,
         error.BadDoc,
         error.DuplicateGenericParams,
@@ -756,7 +831,6 @@ pub fn registerAll(
 ) !void {
     // plain names go in the table, `__` keys in its metatable, so new metamethods dont need no new arms anywhere
     var mod_entries: std.StringHashMapUnmanaged(std.ArrayList(ModEntry)) = .empty;
-    var method_metas: std.AutoHashMapUnmanaged(ParamType, std.ArrayList(MetaEntry)) = .empty;
     var global_funcs: std.ArrayList(GlobalEntry) = .empty;
 
     defer {
@@ -764,10 +838,6 @@ pub fn registerAll(
         while (mit.next()) |e| e.value_ptr.deinit(vm.runtime.alloc);
         mod_entries.deinit(vm.runtime.alloc);
 
-        var meit = method_metas.iterator();
-        while (meit.next()) |e| e.value_ptr.deinit(vm.runtime.alloc);
-
-        method_metas.deinit(vm.runtime.alloc);
         global_funcs.deinit(vm.runtime.alloc);
     }
 
@@ -781,14 +851,6 @@ pub fn registerAll(
                 .namespaced => {
                     const gop = try mod_entries.getOrPutValue(vm.runtime.alloc, head.module.?, .empty);
                     try gop.value_ptr.append(vm.runtime.alloc, .{ .name = spec.name, .atom = coreKey(&spec), .fn_id = fn_id });
-                },
-                // the target module table IS the metatable
-                // , so any key lands there directly
-                .method => if (coreKey(&spec)) |atom| {
-                    const gop = try method_metas.getOrPutValue(vm.runtime.alloc, head.target.?, .empty);
-                    try gop.value_ptr.append(vm.runtime.alloc, .{ .atom = atom, .fn_id = fn_id });
-                } else {
-                    return error.SpecMethodUnplaceable;
                 },
             }
         }
@@ -824,9 +886,6 @@ pub fn registerAll(
         const primitives = [_]ParamType{ .number, .string, .table };
         for (primitives) |target| {
             const module_tid = moduleTableFor(vm, target) orelse continue;
-            if (method_metas.get(target)) |metas| {
-                for (metas.items) |m| try vm.putInTable(module_tid, @intFromEnum(m.atom), m.fn_id);
-            }
             try vm.setMetatable(try prototype(target, vm), module_tid);
         }
     }
@@ -842,10 +901,6 @@ fn moduleTableFor(vm: *revo.VM, target: ParamType) ?revo.memory.TableID {
 const ModEntry = struct {
     name: []const u8,
     atom: ?revo.CoreAtoms,
-    fn_id: revo.memory.FunctionID,
-};
-const MetaEntry = struct {
-    atom: revo.CoreAtoms,
     fn_id: revo.memory.FunctionID,
 };
 const GlobalEntry = struct {
@@ -867,7 +922,10 @@ test "parseGroup round trip: sig, params, doc, variadic, core key" {
         \\finds first occurrence
         \\with a second line
         \\*#
-        \\pub declare string:__index = fn(self: string, idx: any) -> string
+        \\pub declare string = {
+        \\  #* metatable index *#
+        \\  __index: fn(self: string, idx: any) -> string,
+        \\}
         \\#*
         \\converts value
         \\
@@ -912,7 +970,7 @@ test "parseGroup round trip: sig, params, doc, variadic, core key" {
     const idx = specs[1];
     try testing.expectEqualStrings("__index", idx.name);
     try testing.expectEqual(revo.CoreAtoms.__index, coreKey(&idx).?);
-    try testing.expectEqualStrings("finds first occurrence\nwith a second line", idx.doc);
+    try testing.expectEqualStrings("metatable index", idx.doc);
 
     const call = specs[2];
     {
@@ -964,10 +1022,12 @@ test "parseGroup round trip: sig, params, doc, variadic, core key" {
     try testing.expectEqualStrings("table", mbuf.written());
 }
 
-test "parseGroup accepts resource params and method heads" {
+test "parseGroup accepts resource params and nested methods" {
     const src =
         \\pub declare total_add = fn(handle: resource, amount: num) -> num
-        \\pub declare resource:close = fn(self: resource)
+        \\pub declare resource = {
+        \\  close: fn(self: resource),
+        \\}
     ;
     const specs = try parseGroup(testing.allocator, src);
     defer {
@@ -985,6 +1045,77 @@ fn renderAlloc(alloc: std.mem.Allocator, spec: FnSpec) ![]const u8 {
     defer buf.deinit();
     try renderSignature(&buf.writer, spec);
     return alloc.dupe(u8, buf.written());
+}
+
+test "checkImplSig catches a surface that lies about the impl" {
+    const cases = [_]struct { src: []const u8, f: HostFunc, bad: bool }{
+        // impl needs two args where the surface offers one
+        .{ .src = "pub declare fs.open = fn(path: string) -> !table", .bad = true, .f = .{
+            .arity = 2,
+            .param_types = &.{ .string, .string },
+            .func = struct {
+                fn call(_: []const Value, _: *revo.VM) anyerror!root.host.HostResult {
+                    unreachable;
+                }
+            }.call,
+        } },
+        // a param the impl receives as a string, the surface says number
+        .{ .src = "pub declare fs.exists? = fn(path: num) -> bool", .bad = true, .f = .{
+            .arity = 1,
+            .param_types = &.{.string},
+            .func = struct {
+                fn call(_: []const Value, _: *revo.VM) anyerror!root.host.HostResult {
+                    unreachable;
+                }
+            }.call,
+        } },
+        // the honest shapes pass
+        .{ .src = "pub declare fs.open = fn(path: string, mode: string?) -> !table", .bad = false, .f = .{
+            .arity = 1,
+            .param_types = &.{.string},
+            .func = struct {
+                fn call(_: []const Value, _: *revo.VM) anyerror!root.host.HostResult {
+                    unreachable;
+                }
+            }.call,
+        } },
+        // a variadic impl backs a nilable optional, both say "maybe one more"
+        .{ .src = "pub declare fs.open = fn(path: string, mode: string?) -> !table", .bad = false, .f = .{
+            .arity = 1,
+            .variadic = true,
+            .param_types = &.{.string},
+            .func = struct {
+                fn call(_: []const Value, _: *revo.VM) anyerror!root.host.HostResult {
+                    unreachable;
+                }
+            }.call,
+        } },
+        // and a declared `...` needs a variadic impl
+        .{ .src = "pub declare fmt = fn(spec: string, args: any...) -> string", .bad = true, .f = .{
+            .arity = 1,
+            .param_types = &.{.string},
+            .func = struct {
+                fn call(_: []const Value, _: *revo.VM) anyerror!root.host.HostResult {
+                    unreachable;
+                }
+            }.call,
+        } },
+    };
+
+    for (cases) |c| {
+        const specs = try parseGroup(testing.allocator, c.src);
+        defer {
+            for (specs) |s| s.deinit(testing.allocator);
+            testing.allocator.free(specs);
+        }
+        try testing.expectEqual(@as(usize, 1), specs.len);
+        specs[0].f = c.f;
+        if (c.bad) {
+            try testing.expectError(error.ImplSigMismatch, checkImplSig(specs[0]));
+        } else {
+            try checkImplSig(specs[0]);
+        }
+    }
 }
 
 test "parseGroup collects pub type as type-only alias" {
@@ -1040,6 +1171,102 @@ test "parseGroup collects pub type as type-only alias" {
         defer testing.allocator.free(sig);
         try testing.expectEqualStrings("uri.Hi", sig);
     }
+}
+
+test "parseGroup expands table declare into headed specs" {
+    const src =
+        \\pub declare fs = {
+        \\  #* opens a path *#
+        \\  open: fn(path: string) -> !table,
+        \\  Stat: { size: num },
+        \\}
+        \\
+        \\pub declare string = {
+        \\  #* length *#
+        \\  len: fn(self: string) -> num,
+        \\  at: fn<T>(self: table<T>, index: num) -> T | :undef,
+        \\  __call: fn(value: any) -> string,
+        \\}
+    ;
+    const specs = try parseGroup(testing.allocator, src);
+    defer {
+        for (specs) |s| s.deinit(testing.allocator);
+        testing.allocator.free(specs);
+    }
+    try testing.expectEqual(@as(usize, 5), specs.len);
+
+    const open = specs[0];
+    try testing.expectEqualStrings("open", open.name);
+    try testing.expect(!open.is_type);
+    try testing.expect(open.head.kind == .namespaced);
+    try testing.expectEqualStrings("fs", open.head.module.?);
+    try testing.expectEqualStrings("opens a path", open.doc);
+
+    const stat = specs[1];
+    try testing.expect(stat.is_type);
+    try testing.expectEqualStrings("Stat", stat.name);
+    try testing.expect(stat.head.kind == .namespaced);
+    try testing.expectEqualStrings("fs", stat.head.module.?);
+
+    const len = specs[2];
+    try testing.expectEqualStrings("len", len.name);
+    try testing.expect(len.head.kind == .namespaced);
+    try testing.expectEqualStrings("string", len.head.module.?);
+    try testing.expectEqualStrings("length", len.doc);
+
+    const at = specs[3];
+    try testing.expectEqualStrings("at", at.name);
+    try testing.expect(at.head.kind == .namespaced);
+    try testing.expectEqualStrings("string", at.head.module.?);
+    try testing.expectEqual(@as(usize, 1), at.type_params.len);
+    try testing.expectEqualStrings("T", at.type_params[0]);
+
+    const call = specs[4];
+    try testing.expectEqualStrings("__call", call.name);
+    try testing.expectEqual(revo.CoreAtoms.__call, coreKey(&call).?);
+
+    {
+        const sig = try renderAlloc(testing.allocator, open);
+        defer testing.allocator.free(sig);
+        try testing.expectEqualStrings("fs.open(path: string) -> !table", sig);
+    }
+}
+
+test "module doc keeps paragraphs" {
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+
+    const src =
+        \\#*
+        \\first paragraph
+        \\
+        \\second paragraph
+        \\*#
+        \\pub declare mymod = {
+        \\  go: fn(n: num) -> num,
+        \\}
+    ;
+    const parsed = try revo.lang.parseSourceReport(a, src);
+    const node = switch (parsed) {
+        .ok => |n| n,
+        .err => return error.IfaceParseFailed,
+    };
+    const specs = try collectSpecs(a, node, true);
+    try testing.expectEqualStrings("first paragraph\n\nsecond paragraph", specs[0].module_doc);
+}
+
+test "moduleDoc finds table docs in the single file" {
+    _ = try loadAllSpecs(testing.allocator);
+    try testing.expectEqualStrings("filesystem access & ops", moduleDoc("fs"));
+    try testing.expectEqualStrings("filesystem access & ops", moduleDoc("file"));
+    // `re` must not match the `revo` table
+    try testing.expectEqualStrings("regular expressions!", moduleDoc("re"));
+    try testing.expect(moduleDoc("revo").len > 0);
+    try testing.expectEqualStrings("numeric math", moduleDoc("math"));
+    try testing.expectEqualStrings("command-line arguments parsing", moduleDoc("argparse"));
+    try testing.expectEqualStrings("", moduleDoc("nosuchmod"));
+    try testing.expectEqualStrings("", moduleDoc("root"));
 }
 
 test "collectMacroSpans finds pub procs only" {

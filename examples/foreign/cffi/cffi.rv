@@ -1,0 +1,18 @@
+const cffi: {
+  #* load("libraylib.so") -> lib table with t:func() method *#
+  load: fn(lib: string) -> table,
+  #* dlclose a handle *#
+  free: fn(lib: table),
+  #*
+  ```revo
+  let iw = lib:func("InitWindow", {:i, :i, :s}, :v) # -> callable table
+
+  iw(a, b, c)    # spread args (no table alloc!)
+  iw{args_table} # table args
+  iw()           # no args
+  ```
+  *#
+  func: fn(lib: table, name: string, sig: table<atom>, ret: atom) -> table,
+} = import "./cffi.so"
+
+cffi

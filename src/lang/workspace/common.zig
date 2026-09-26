@@ -271,3 +271,50 @@ pub fn getKnownGlobals(ws: *Workspace, alloc: std.mem.Allocator) ![]const []cons
 
     return pipeline.knownGlobalsFromVm(vm, alloc);
 }
+
+test "mergeReports owns part text after both inputs are freed" {
+    const alloc = std.testing.allocator;
+
+    const a: pipeline.Error = .{ .parse = .{ .kind = .UnexpectedToken, .report = .{
+        .message = try alloc.dupe(u8, "unexpected token"),
+        .code = "unexpected-token",
+        .source_name = try alloc.dupe(u8, "a.rv"),
+        .source = try alloc.dupe(u8, "print(1 2)\n"),
+        .parts = try alloc.dupe(diagnostic.Part, &.{
+            .{ .@"error" = try alloc.dupe(u8, "unexpected token") },
+            .{ .span = .{
+                .span = .{ .start = 8, .end = 9, .line = 1, .column = 9 },
+                .role = .primary,
+                .message = try alloc.dupe(u8, "here"),
+            } },
+        }),
+    } } };
+
+    const b: pipeline.Error = .{ .semantic = .{ .kind = .SemanticError, .report = .{
+        .message = try alloc.dupe(u8, "name `foo` is not defined"),
+        .source_name = try alloc.dupe(u8, "a.rv"),
+        .source = try alloc.dupe(u8, "print(1 2)\n"),
+        .parts = try alloc.dupe(diagnostic.Part, &.{
+            .{ .@"error" = try alloc.dupe(u8, "name `foo` is not defined") },
+        }),
+    } } };
+
+    var merged = try mergeReports(alloc, a, b);
+    defer merged.deinit(alloc);
+    try std.testing.expectEqual(@as(usize, 3), merged.parts.len);
+
+    // :: aliasing
+    //   merged text is never the input text, freeing the inputs
+    //   then poisons those bytes under a debug allocator
+    try std.testing.expect(a.parse.report.parts[0].@"error".ptr != merged.parts[0].@"error".ptr);
+    try std.testing.expect(a.parse.report.parts[1].span.message.ptr != merged.parts[1].span.message.ptr);
+    try std.testing.expect(b.semantic.report.parts[0].@"error".ptr != merged.parts[2].@"error".ptr);
+
+    pipeline.deinitError(alloc, a);
+    pipeline.deinitError(alloc, b);
+
+    try std.testing.expectEqualStrings("unexpected token", merged.parts[0].@"error");
+    try std.testing.expectEqualStrings("here", merged.parts[1].span.message);
+    try std.testing.expectEqualStrings("name `foo` is not defined", merged.parts[2].@"error");
+    try std.testing.expectEqualStrings("a.rv", merged.source_name.?);
+}

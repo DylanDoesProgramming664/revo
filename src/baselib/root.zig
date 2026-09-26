@@ -763,7 +763,7 @@ pub fn setenv_(args: []const Value, vm: *VM) !host.HostResult {
 extern "c" fn setenv(name: [*:0]const u8, value: [*:0]const u8, overwrite: c_int) c_int;
 const libc_setenv = setenv;
 
-/// resolve + cache + run; `.d.rv` is compile-time only, `.so` loads native
+/// resolve + cache + run; `.so` loads native
 pub fn import(args: []const Value, vm: *VM) !host.HostResult {
     if (args.len != 1) return .errArity(args.len, 1);
 
@@ -780,11 +780,6 @@ pub fn import(args: []const Value, vm: *VM) !host.HostResult {
     ) orelse return .errModuleNotFound();
 
     defer vm.runtime.alloc.free(resolved_path);
-    if (std.mem.endsWith(u8, resolved_path, ".d.rv")) {
-        // ambient declaration file: compile-time only, no runtime side effects
-        const t_id = try vm.tables.create();
-        return .data(Value.new.table(t_id));
-    }
     if (std.mem.endsWith(u8, resolved_path, ".so") or std.mem.endsWith(u8, resolved_path, ".dylib")) {
         const can_dlopen = switch (builtin.target.os.tag) {
             .wasi, .freestanding, .windows => false,
