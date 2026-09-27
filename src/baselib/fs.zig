@@ -483,7 +483,12 @@ test "fs.glob wildcards" {
     ;
 
     // gusic: i'm not sure this one will work on linux
-    try testing.topString(source, "{ .\\LICENSE.txt }");
+    // lung: it won't
+    // try testing.topString(source, "{ .\\LICENSE.txt }");
+
+    var result = try testing.topResult(source, null);
+    defer result.deinit();
+    try std.testing.expect(std.mem.find(u8, result.vm.stringValue(result.value.asString().?), "LICENSE.txt") != null);
 }
 
 test "fs.open/read reads file contents" {

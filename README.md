@@ -100,7 +100,10 @@ revo
 ### made with revo
 
 - [hachem-wtf/revel](https://github.com/hachem-wtf/revel) -- a unix-like kernel
-- if you want to feature your project on the readme, you can submit a project via issues/discussion/email/discord
+- [hiccup.revo](https://github.com/0riginaln0/hiccup.revo) -- an html rendering library\
+- [rover](https://codeberg.org/doomy/rover) -- parser generators\
+
+- if you want your project in the readme, you can submit it via pr/issues/discussion/email/discord
 
 ### in c/zig/odin/what have you
 
