@@ -28,7 +28,9 @@ however, this project is rapidly changing. i recommend you build from source ins
 
 ## install from source
 
-you need [zig](https://ziglang.org/download) `0.16.0` to build revo. i also recommend the [anyzig](https://github.com/marler8997/anyzig) version manager
+you need [zig](https://ziglang.org/download) `0.16.0` to build revo
+
+i also recommend the [anyzig](https://github.com/marler8997/anyzig) version manager
 
 ### linux/bsd/mac/etc
 
@@ -46,7 +48,9 @@ revo
 
 #### nix
 
-this project has a flake which exposes revo as a package on `default`. you can open a shell with revo using `nix shell github:if-not-nil/revo?dir=extra/nix`. there is also a function that bundles a revo script into a nix package.
+this project has a flake which exposes revo as a package on `default`\
+you can open a shell with revo using `nix shell github:if-not-nil/revo?dir=extra/nix`\
+there is also a function that bundles a revo script into a nix package
 
 #### windows
 

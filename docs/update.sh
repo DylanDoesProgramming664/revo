@@ -8,7 +8,9 @@ cp docs/*.md	 docs/_ign-web/content/
 cp docs/*.html docs/_ign-web/content/
 rm docs/_ign-web/content/README.md
 
-zig-out/bin/revo doc --html --splice ./src/baselib/sigs/ < "$STDOCPATH" > ./std-output.html
+zig build -Dtarget=wasm32-wasi -Doptimize=ReleaseSmall
+cp ./zig-out/bin/revo.wasm ./docs/_ign-web/static/engine/revo-wasi.wasm
+zig-out/bin/revo doc --html --splice ./src/baselib/base.rv < "$STDOCPATH" > ./std-output.html
 mv ./std-output.html $STDOCPATH
 
 cd $DOCS_PATH
