@@ -330,7 +330,7 @@ pub fn parse(allocator: std.mem.Allocator, source: Source, opts: ParseOptions) !
     }
 
     // baselib macros merge as preludes: same merge shape,
-    // authority lives in sigs/std.rv instead of a lang-side string.
+    // authority lives in base.rv instead of a lang-side string.
     // the list is permanent like full_specs, never freed.
     const macro_srcs = try revo.baselib.specs.macroSources(allocator);
     var preludes = try std.ArrayList(*Node).initCapacity(allocator, macro_srcs.len);

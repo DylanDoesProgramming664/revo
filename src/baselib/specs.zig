@@ -1,7 +1,7 @@
 //!
 //! welcome to baselib as data
 //!
-//! ~ sigs and docs live in `src/baselib/sigs/std.rv`
+//! ~ sigs and docs live in `src/baselib/base.rv`
 //!   one `pub declare mod = { ... }` table per module in a single file
 //!   (root/os globals and `pub type` aliases stay flat)
 //! ~ zig supplies impls only (`pub const impls: []const specs.Impl` per file)
@@ -50,7 +50,7 @@ pub const Group = struct {
 /// regex/ffi are off so the mvzr/io chain never reaches targets like
 /// freestanding wasm
 pub const groups: []const Group = &.{
-    Group.init("std", @embedFile("sigs/std.rv"), &.{
+    Group.init("std", @embedFile("base.rv"), &.{
         @import("root.zig").root_impls,
         @import("root.zig").os_impls,
         if (regex_on) @import("regex.zig").impls else &.{},
@@ -467,7 +467,7 @@ pub const Head = struct {
     module: ?[]const u8 = null,
 };
 
-/// one declaration from the sig surface (`sigs/std.rv`)
+/// one declaration from the sig surface (`base.rv`)
 pub const FnSpec = struct {
     name: []const u8,
     head: Head,

@@ -1490,7 +1490,7 @@ extract docs with `revo doc script.rv`:
   adds two numbers
 ```
 
-the baselib runs on the same comments: `src/baselib/sigs/std.rv` is the single
+the baselib runs on the same comments: `src/baselib/base.rv` is the single
 source of truth behind runtime registration, compile-time typing, and the
 [generated reference]({{< ref "std" >}})
 
@@ -1663,7 +1663,7 @@ print(x, y) # 2, 1
 
 #### preloaded macros
 
-these live in `src/baselib/sigs/std.rv` and merge into every build.
+these live in `src/baselib/base.rv` and merge into every build.
   right now that file declares no macros; baselib tables can add
   `pub proc` macros there (`pub proc uri.shout! ...`), called qualified
 

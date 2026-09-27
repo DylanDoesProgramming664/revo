@@ -87,11 +87,11 @@ see [src/lang/README.md](src/lang/README.md)
 ### baselib (`src/baselib/`)
 
 to make a new module:
-~ add its `pub declare mod = { ... }` table (or globals, for root/os-style) to `sigs/std.rv`\
+~ add its `pub declare mod = { ... }` table (or globals, for root/os-style) to `base.rv`\
 ~ add its zig `impls` to the `std` group list in `specs.zig`
 
 how it works:\
-the surface is at `sigs/std.rv`, tables carry doc-comment sigs per field; `specs.zig` expands them and merges with the zig `impls` at boot (`register_baselib`) into `full_specs`, so the doc set always matches the runtime. the primitive type metatable _is_ the module table, so `x:method()` dispatch is a single lookup
+the surface is at `base.rv`, tables carry doc-comment sigs per field; `specs.zig` expands them and merges with the zig `impls` at boot (`register_baselib`) into `full_specs`, so the doc set always matches the runtime. the primitive type metatable _is_ the module table, so `x:method()` dispatch is a single lookup
 
 ### c api, lsp, wasm, repl
 
