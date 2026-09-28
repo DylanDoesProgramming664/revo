@@ -635,7 +635,7 @@ pub fn arrayGet(self: *VM, tid: mem.TableID, idx: usize) ?Value {
 }
 
 /// deep copy of a table: array part in order, then keyed entries
-pub fn copyTable(self: *VM, src: mem.TableID) !Value {
+pub fn tableCopy(self: *VM, src: mem.TableID) !Value {
     const s = try self.tables.get(src);
     const id = try self.tables.create();
     const d = try self.tables.get(id);
@@ -646,6 +646,42 @@ pub fn copyTable(self: *VM, src: mem.TableID) !Value {
     while (it.next()) |entry|
         try d.putRaw(entry.key, entry.value, self);
     return Value.new.table(id);
+}
+
+/// recursive clone with cycle guard
+pub fn tableDeepCopy(
+    vm: *VM,
+    src: revo.memory.TableID,
+) anyerror!Value {
+    const aux = struct {
+        fn deepCopyInto(
+            _vm: *VM,
+            _src: revo.memory.TableID,
+            seen: *std.AutoHashMap(revo.memory.TableID, revo.memory.TableID),
+        ) anyerror!Value {
+            if (seen.get(_src)) |id| return Value.new.table(id);
+            const id = try _vm.tables.create();
+            try seen.put(_src, id);
+            const s = try _vm.tables.get(_src);
+            const d = try _vm.tables.get(id);
+
+            for (s.array.items) |item| {
+                const v = if (item.asTable()) |tid| try deepCopyInto(_vm, tid, seen) else item;
+                try d.array.append(_vm.runtime.alloc, v);
+            }
+            var it = s.hash.orderedIterator();
+            while (it.next()) |entry| {
+                const k = if (entry.key.asTable()) |tid| try deepCopyInto(_vm, tid, seen) else entry.key;
+                const v = if (entry.value.asTable()) |tid| try deepCopyInto(_vm, tid, seen) else entry.value;
+                try d.putRaw(k, v, _vm);
+            }
+            return Value.new.table(id);
+        }
+    }.deepCopyInto;
+
+    var seen = std.AutoHashMap(revo.memory.TableID, revo.memory.TableID).init(vm.runtime.alloc);
+    defer seen.deinit();
+    return aux(vm, src, &seen);
 }
 
 pub fn push(self: *VM, val: Value) !void {
