@@ -19,8 +19,8 @@ const magenta = "\x1b[35m";
 const blue = "\x1b[34m";
 const yellow = "\x1b[33m";
 
-fn style(w: *Writer, code: []const u8) !void {
-    try revo.term.style(w, code);
+fn style(w: *Writer, code: []const u8, color: bool) !void {
+    try revo.term.style(w, code, color);
 }
 
 // -- [extract] ---------------------------------------------------------------
@@ -53,7 +53,7 @@ pub fn docsExtract(alloc: std.mem.Allocator, src: []const u8) !Extracted {
     defer arena.deinit();
     const a = arena.allocator();
 
-    const parsed = try Parser.parseSourceReport(a, src);
+    const parsed = try Parser.parseSourceReport(a, src, .{});
     const root_node = switch (parsed) {
         .ok => |node| node,
         .err => |f| {
@@ -212,59 +212,60 @@ pub fn renderText(
     w: *Writer,
     specs: []*const FnSpec,
     module_doc: []const u8,
+    color: bool,
 ) !void {
     if (module_doc.len > 0) {
-        try style(w, dim);
+        try style(w, dim, color);
         try writeIndentedDoc(w, module_doc, 0);
-        try style(w, reset);
+        try style(w, reset, color);
         try w.writeAll("\n");
     }
 
-    try renderTextGlobals(alloc, w, specs);
-    try renderTextModules(alloc, w, specs);
+    try renderTextGlobals(alloc, w, specs, color);
+    try renderTextModules(alloc, w, specs, color);
 }
 
-fn renderTextGlobals(alloc: std.mem.Allocator, w: *Writer, specs: []*const FnSpec) !void {
+fn renderTextGlobals(alloc: std.mem.Allocator, w: *Writer, specs: []*const FnSpec, color: bool) !void {
     var planned = try collectGlobals(alloc, specs);
     defer planned.deinit(alloc);
     if (planned.items.len == 0) return;
 
-    try style(w, bold);
+    try style(w, bold, color);
     try w.writeAll("top-level");
-    try style(w, reset);
+    try style(w, reset, color);
     try w.writeAll("\n");
     for (planned.items) |p| {
         try renderFn(alloc, w, p.spec, .{ .sig_indent = 2, .doc_indent = 4 });
     }
 }
 
-fn renderTextModules(alloc: std.mem.Allocator, w: *Writer, specs: []*const FnSpec) !void {
+fn renderTextModules(alloc: std.mem.Allocator, w: *Writer, specs: []*const FnSpec, color: bool) !void {
     var names = try collectModuleNames(alloc, specs);
     defer names.deinit(alloc);
     if (names.items.len == 0) return;
 
-    try style(w, bold);
+    try style(w, bold, color);
     try w.writeAll("modules");
-    try style(w, reset);
+    try style(w, reset, color);
     try w.writeAll("\n");
     for (names.items) |mod_name| {
         var planned = try collectModule(alloc, specs, mod_name);
         defer planned.deinit(alloc);
 
         try w.writeAll("\n  ");
-        try style(w, dim);
+        try style(w, dim, color);
         try w.writeAll("module ");
-        try style(w, reset);
-        try style(w, bold ++ cyan);
+        try style(w, reset, color);
+        try style(w, bold ++ cyan, color);
         try w.writeAll(mod_name);
-        try style(w, reset);
+        try style(w, reset, color);
         try w.writeAll("\n");
 
         for (planned.items) |p| {
             if (p.spec.module_doc.len > 0) {
-                try style(w, dim);
+                try style(w, dim, color);
                 try writeIndentedDoc(w, p.spec.module_doc, 4);
-                try style(w, reset);
+                try style(w, reset, color);
                 try w.writeByte('\n');
                 break;
             }
@@ -285,9 +286,11 @@ pub const FnOpts = struct {
     leading_newline: bool = true,
     /// docs + metatable notes; false gives a signature index line
     show_doc: bool = true,
+    color: bool = false,
 };
 
 pub fn renderFn(alloc: std.mem.Allocator, w: *Writer, spec: *const FnSpec, opts: FnOpts) !void {
+    const color = opts.color;
     var sig_buf = std.Io.Writer.Allocating.init(alloc);
     defer sig_buf.deinit();
     try specs_mod.renderSignature(&sig_buf.writer, spec.*);
@@ -295,28 +298,28 @@ pub fn renderFn(alloc: std.mem.Allocator, w: *Writer, spec: *const FnSpec, opts:
     if (opts.leading_newline) try w.writeAll("\n");
     try writeIndent(w, opts.sig_indent);
     if (spec.is_type) {
-        try style(w, cyan);
+        try style(w, cyan, color);
         if (opts.qualified_type) {
             try w.writeAll(sig);
         } else {
             try w.print("{s}", .{spec.name});
         }
-        try style(w, reset);
+        try style(w, reset, color);
         try w.writeAll("\n");
         try writeIndent(w, opts.doc_indent);
-        try style(w, dim);
+        try style(w, dim, color);
         try w.writeAll("(value)");
-        try style(w, reset);
+        try style(w, reset, color);
         try w.writeAll("\n");
     } else {
-        try style(w, magenta);
+        try style(w, magenta, color);
         try w.writeAll("fn");
-        try style(w, reset);
+        try style(w, reset, color);
         try w.writeByte(' ');
         const name_end = std.mem.find(u8, sig, "(") orelse sig.len;
-        try style(w, cyan);
+        try style(w, cyan, color);
         try w.writeAll(sig[0..name_end]);
-        try style(w, reset);
+        try style(w, reset, color);
         try w.writeAll(sig[name_end..]);
         try w.writeAll("\n");
     }
@@ -324,12 +327,12 @@ pub fn renderFn(alloc: std.mem.Allocator, w: *Writer, spec: *const FnSpec, opts:
 
     if (specs_mod.coreKey(spec)) |k| {
         try writeIndent(w, opts.doc_indent);
-        try style(w, dim);
+        try style(w, dim, color);
         try w.writeAll("metatable key: ");
-        try style(w, reset);
-        try style(w, yellow);
+        try style(w, reset, color);
+        try style(w, yellow, color);
         try w.print("{s}", .{@tagName(k)});
-        try style(w, reset);
+        try style(w, reset, color);
         try w.writeAll("\n");
     }
 
@@ -337,9 +340,9 @@ pub fn renderFn(alloc: std.mem.Allocator, w: *Writer, spec: *const FnSpec, opts:
         try writeIndentedDoc(w, spec.doc, opts.doc_indent);
     } else {
         try writeIndent(w, opts.doc_indent);
-        try style(w, dim);
+        try style(w, dim, color);
         try w.writeAll("undocumented :(");
-        try style(w, reset);
+        try style(w, reset, color);
         try w.writeAll("\n");
     }
 }
@@ -749,7 +752,7 @@ pub const Cli = struct {
     fn printError(init: std.process.Init, comptime fmt: []const u8, args: anytype) void {
         var buf = std.Io.Writer.Allocating.init(init.gpa);
         defer buf.deinit();
-        term.printError(&buf.writer, fmt, args) catch return;
+        term.printError(&buf.writer, term.isColorSupported(init.environ_map, init.io), fmt, args) catch return;
         std.debug.print("{s}", .{buf.written()});
     }
 
@@ -764,10 +767,11 @@ pub const Cli = struct {
     ) !void {
         var buf = std.Io.Writer.Allocating.init(gpa);
         defer buf.deinit();
+        const color = term.isColorSupported(init.environ_map, init.io);
         if (html) {
             try renderHtml(gpa, &buf.writer, flat, module_doc);
         } else {
-            try renderText(gpa, &buf.writer, flat, module_doc);
+            try renderText(gpa, &buf.writer, flat, module_doc, color);
         }
 
         const body = std.mem.trim(u8, buf.written(), "\n");

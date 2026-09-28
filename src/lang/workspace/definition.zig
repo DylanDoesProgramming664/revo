@@ -125,7 +125,7 @@ fn collectReferencesInFile(
     defer arena.deinit();
     const arena_alloc = arena.allocator();
 
-    const parsed = Parser.parseSourceReport(arena_alloc, snap.text) catch return;
+    const parsed = Parser.parseSourceReport(arena_alloc, snap.text, .{}) catch return;
     const root = switch (parsed) {
         .ok => |r| r,
         .err => return,

@@ -165,7 +165,7 @@ fn processImport(
     // non-OOM errors are deferred to runtime,,, preload is best-effort
     const source = (try resolveModuleText(vm, cache, path, alloc)) orelse return;
 
-    const module_ast = Parser.parseSource(alloc, source) catch return;
+    const module_ast = Parser.parseSource(alloc, source, .{}) catch return;
 
     extractPubDefs(module_ast, mod_name, alloc, inject_nodes) catch return;
     extractPubImportsOneLevel(vm, module_ast, mod_name, alloc, inject_nodes, visited_sub, cache) catch return;
@@ -239,7 +239,7 @@ fn extractPubImportsOneLevel(
 
                 const source = try readResolvedCached(vm, cache, resolved, alloc);
 
-                const sub_ast = try Parser.parseSource(alloc, source);
+                const sub_ast = try Parser.parseSource(alloc, source, .{});
                 try extractPubDefs(sub_ast, sub_prefix, alloc, inject_nodes);
             }
         },

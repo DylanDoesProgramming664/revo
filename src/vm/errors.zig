@@ -109,12 +109,19 @@ pub const RunFailure = struct {
     trace_len: usize = 0,
     trace: [max_trace_frames]TraceFrame = @splat(TraceFrame.empty()),
 
-    pub fn render(self: RunFailure, alloc: std.mem.Allocator, writer: *std.Io.Writer, source: []const u8) !void {
+    pub fn render(
+        self: RunFailure,
+        alloc: std.mem.Allocator,
+        writer: *std.Io.Writer,
+        source: []const u8,
+        color: bool,
+    ) !void {
         return self.renderAt(
             alloc,
             writer,
             self.report.source_name orelse "<source>",
             self.report.source orelse source,
+            color,
         );
     }
 
@@ -124,12 +131,13 @@ pub const RunFailure = struct {
         writer: *std.Io.Writer,
         source_name: []const u8,
         source: []const u8,
+        color: bool,
     ) !void {
         var report = self.report;
         report.source_name = source_name;
         report.source = source;
         report.parts = self.parts[0..self.part_len];
-        try diagnostic.renderReport(alloc, writer, report);
+        try diagnostic.renderReport(alloc, writer, report, .{ .color = color });
     }
 };
 
@@ -173,7 +181,7 @@ test "failure rendering includes stack trace frames" {
 
     var buf = std.Io.Writer.Allocating.init(std.testing.allocator);
     defer buf.deinit();
-    try failure.render(std.testing.allocator, &buf.writer, "unused");
+    try failure.render(std.testing.allocator, &buf.writer, "unused", false);
 
     try std.testing.expect(std.mem.find(u8, buf.written(), "stack trace:") != null);
     try std.testing.expect(std.mem.find(u8, buf.written(), "0: inner at file.rv:2:4") != null);

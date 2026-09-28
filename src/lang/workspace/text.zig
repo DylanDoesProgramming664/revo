@@ -201,7 +201,7 @@ pub fn findCallAtPosition(src: []const u8, pos: Position) ?CallAtPos {
 
 /// walk ast to build a map of byte offset -> semantic token type
 pub fn buildASTSpanMap(arena: std.mem.Allocator, source: []const u8) ?std.AutoHashMap(usize, u32) {
-    const parsed = Parser.parseSourceReport(arena, source) catch return null;
+    const parsed = Parser.parseSourceReport(arena, source, .{}) catch return null;
     const root = switch (parsed) {
         .ok => |n| n,
         .err => return null,

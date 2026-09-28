@@ -67,15 +67,16 @@ fn popVisiting() void {
 
 fn styledPrint(
     writer: *std.Io.Writer,
+    host_color: bool,
     mode: Value.PrintMode,
     color: []const u8,
     comptime fmt: []const u8,
     args: anytype,
 ) anyerror!void {
-    const colored = mode == .pretty;
-    if (colored) try style(writer, color);
+    const colored = mode == .pretty and host_color;
+    if (colored) try style(writer, color, host_color);
     try writer.print(fmt, args);
-    if (colored) try style(writer, color_reset);
+    if (colored) try style(writer, color_reset, host_color);
 }
 
 fn writeEscapedString(writer: *std.Io.Writer, s: []const u8) anyerror!void {
@@ -104,7 +105,7 @@ fn writeEscapedString(writer: *std.Io.Writer, s: []const u8) anyerror!void {
     try writer.writeByte('"');
 }
 
-pub fn writeValue(self: Value, writer: *std.Io.Writer, vm: *revo.VM, mode: Value.PrintMode) anyerror!void {
+pub fn writeValue(self: Value, writer: *std.Io.Writer, vm: *revo.VM, mode: Value.PrintMode, host_color: bool) anyerror!void {
     if (write_depth >= max_write_depth) {
         try writer.writeAll("<max-depth-exceeded>");
         return;
@@ -119,22 +120,22 @@ pub fn writeValue(self: Value, writer: *std.Io.Writer, vm: *revo.VM, mode: Value
     };
     if (metamethod) |mm| {
         if (mm.tag() != .function) return error.TypeError;
-        return writeValue(try vm.callFunctionParts(mm, null, &.{self}, null), writer, vm, mode);
+        return writeValue(try vm.callFunctionParts(mm, null, &.{self}, null), writer, vm, mode, host_color);
     }
 
     switch (self.tag()) {
-        .number => try styledPrint(writer, mode, color_accent, "{}", .{self.asNumOpt().?}),
+        .number => try styledPrint(writer, host_color, mode, color_accent, "{}", .{self.asNumOpt().?}),
         .string => switch (mode) {
             .plain => try writer.writeAll(vm.stringValue(self.asString().?)),
             .debug => try writeEscapedString(writer, vm.stringValue(self.asString().?)),
             .pretty => {
-                try style(writer, color_string);
+                try style(writer, color_string, host_color);
                 try writeEscapedString(writer, vm.stringValue(self.asString().?));
-                try style(writer, color_reset);
+                try style(writer, color_reset, host_color);
             },
         },
         .atom => {
-            try styledPrint(writer, mode, color_accent, ":{s}", .{vm.stringValue(self.asAtom().?)});
+            try styledPrint(writer, host_color, mode, color_accent, ":{s}", .{vm.stringValue(self.asAtom().?)});
         },
         .function => {
             const id = self.asFunction().?;
@@ -150,33 +151,33 @@ pub fn writeValue(self: Value, writer: *std.Io.Writer, vm: *revo.VM, mode: Value
                 try writer.writeAll("<dead-table>");
                 return;
             };
-            tbl.write(writer, vm, mode) catch try writer.writeAll("<table-unprintable>");
+            tbl.write(writer, vm, mode, host_color) catch try writer.writeAll("<table-unprintable>");
         },
         .@"opaque" => try writer.print("<opaque {*}>", .{self.asOpaque().?}),
         .resource => try writer.print("<resource #{d}>", .{self.asResource().?}),
     }
 }
 
-fn writeTableKey(key: Value, writer: *std.Io.Writer, vm: *revo.VM, mode: Value.PrintMode) anyerror!void {
-    const colored = mode == .pretty;
+fn writeTableKey(key: Value, writer: *std.Io.Writer, vm: *revo.VM, mode: Value.PrintMode, host_color: bool) anyerror!void {
+    const colored = mode == .pretty and host_color;
     switch (key.tag()) {
         .atom => {
-            if (colored) try style(writer, color_accent);
+            if (colored) try style(writer, color_accent, host_color);
             try writer.writeAll(vm.stringValue(key.asAtom().?));
-            if (colored) try style(writer, color_reset);
+            if (colored) try style(writer, color_reset, host_color);
         },
         .string => {
-            if (colored) try style(writer, color_string);
+            if (colored) try style(writer, color_string, host_color);
             try writeEscapedString(writer, vm.stringValue(key.asString().?));
-            if (colored) try style(writer, color_reset);
+            if (colored) try style(writer, color_reset, host_color);
         },
-        else => try writeValue(key, writer, vm, mode),
+        else => try writeValue(key, writer, vm, mode, host_color),
     }
 }
 
-pub fn writeTable(tbl: *revo.table.Table, writer: *std.Io.Writer, vm: *revo.VM, mode: Value.PrintMode) anyerror!void {
+pub fn writeTable(tbl: *revo.table.Table, writer: *std.Io.Writer, vm: *revo.VM, mode: Value.PrintMode, host_color: bool) anyerror!void {
     if (mode == .pretty) {
-        try writePrettyTable(tbl, writer, vm, 0);
+        try writePrettyTable(tbl, writer, vm, 0, host_color);
         return;
     }
 
@@ -209,22 +210,22 @@ pub fn writeTable(tbl: *revo.table.Table, writer: *std.Io.Writer, vm: *revo.VM, 
             if (!first) try writer.writeAll(", ");
             first = false;
 
-            try writeValue(entry.value, writer, vm, mode);
+            try writeValue(entry.value, writer, vm, mode, host_color);
         } else if (multi_line) {
             if (!first) try writer.writeAll(",");
             try writer.writeAll("\n  ");
-            try writeTableKey(entry.key, writer, vm, mode);
+            try writeTableKey(entry.key, writer, vm, mode, host_color);
             try writer.writeAll(" = ");
 
-            try writeValue(entry.value, writer, vm, mode);
+            try writeValue(entry.value, writer, vm, mode, host_color);
             first = false;
         } else {
             if (!first) try writer.writeAll(", ");
             first = false;
-            try writeTableKey(entry.key, writer, vm, mode);
+            try writeTableKey(entry.key, writer, vm, mode, host_color);
             try writer.writeAll(" = ");
 
-            try writeValue(entry.value, writer, vm, mode);
+            try writeValue(entry.value, writer, vm, mode, host_color);
         }
     }
 
@@ -235,7 +236,7 @@ pub fn writeTable(tbl: *revo.table.Table, writer: *std.Io.Writer, vm: *revo.VM, 
     }
 }
 
-fn writePrettyTable(tbl: *revo.table.Table, writer: *std.Io.Writer, vm: *revo.VM, indent_level: usize) anyerror!void {
+fn writePrettyTable(tbl: *revo.table.Table, writer: *std.Io.Writer, vm: *revo.VM, indent_level: usize, host_color: bool) anyerror!void {
     if (write_depth >= max_write_depth) {
         try writer.writeAll("<max-depth-exceeded>");
         return;
@@ -255,19 +256,19 @@ fn writePrettyTable(tbl: *revo.table.Table, writer: *std.Io.Writer, vm: *revo.VM
     defer popVisiting();
 
     if (tbl.array.items.len == 0 and tbl.hash.count == 0) {
-        try style(writer, color_brace);
+        try style(writer, color_brace, host_color);
         try writer.writeAll("{");
-        try style(writer, color_reset);
-        try style(writer, color_brace);
+        try style(writer, color_reset, host_color);
+        try style(writer, color_brace, host_color);
         try writer.writeAll("}");
-        try style(writer, color_reset);
+        try style(writer, color_reset, host_color);
         return;
     }
 
     const indent = "  ";
-    try style(writer, color_brace);
+    try style(writer, color_brace, host_color);
     try writer.writeAll("{");
-    try style(writer, color_reset);
+    try style(writer, color_reset, host_color);
     try writer.writeAll("\n");
 
     if (tbl.array.items.len > 0) {
@@ -279,7 +280,7 @@ fn writePrettyTable(tbl: *revo.table.Table, writer: *std.Io.Writer, vm: *revo.VM
         for (tbl.array.items) |val| {
             if (!first) try writer.writeAll(", ");
             first = false;
-            try writePrettyValue(val, writer, vm, indent_level + 1);
+            try writePrettyValue(val, writer, vm, indent_level + 1, host_color);
         }
         try writer.writeAll(",\n");
     }
@@ -291,9 +292,9 @@ fn writePrettyTable(tbl: *revo.table.Table, writer: *std.Io.Writer, vm: *revo.VM
         while (i < indent_level + 1) : (i += 1) {
             try writer.writeAll(indent);
         }
-        try writeTableKey(entry.key, writer, vm, .pretty);
+        try writeTableKey(entry.key, writer, vm, .pretty, host_color);
         try writer.writeAll(" = ");
-        try writePrettyValue(entry.value, writer, vm, indent_level + 1);
+        try writePrettyValue(entry.value, writer, vm, indent_level + 1, host_color);
         if (hi + 1 < tbl.hash.count) {
             try writer.writeAll(",");
         }
@@ -305,19 +306,19 @@ fn writePrettyTable(tbl: *revo.table.Table, writer: *std.Io.Writer, vm: *revo.VM
     while (j < indent_level) : (j += 1) {
         try writer.writeAll(indent);
     }
-    try style(writer, color_brace);
+    try style(writer, color_brace, host_color);
     try writer.writeAll("}");
-    try style(writer, color_reset);
+    try style(writer, color_reset, host_color);
 }
 
-fn writePrettyValue(val: Value, writer: *std.Io.Writer, vm: *revo.VM, indent_level: usize) anyerror!void {
+fn writePrettyValue(val: Value, writer: *std.Io.Writer, vm: *revo.VM, indent_level: usize, host_color: bool) anyerror!void {
     if (val.tag() == .table) {
         const tbl = vm.tables.get(val.asTable().?) catch {
             try writer.writeAll("<dead-table>");
             return;
         };
-        try writePrettyTable(tbl, writer, vm, indent_level);
+        try writePrettyTable(tbl, writer, vm, indent_level, host_color);
     } else {
-        try writeValue(val, writer, vm, .pretty);
+        try writeValue(val, writer, vm, .pretty, host_color);
     }
 }

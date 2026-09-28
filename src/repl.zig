@@ -265,7 +265,7 @@ pub const Session = struct {
     fn printResult(self: *Session, out: *std.Io.Writer) !void {
         var w = std.Io.Writer.Allocating.init(self.gpa);
         defer w.deinit();
-        try self.vm.mainResult().write(&w.writer, self.vm, .pretty);
+        try self.vm.mainResult().write(&w.writer, self.vm, .pretty, self.vm.runtime.supports_color);
         try out.writeAll(w.written());
         try out.writeAll("\n");
     }
@@ -273,7 +273,7 @@ pub const Session = struct {
     fn printBuildError(self: *Session, out: *std.Io.Writer, source: []const u8, err: revo.lang.Error) !void {
         var buf = std.Io.Writer.Allocating.init(self.gpa);
         defer buf.deinit();
-        try revo.lang.renderError(self.gpa, &buf.writer, .{ .name = "<repl>", .text = source }, err);
+        try revo.lang.renderError(self.gpa, &buf.writer, .{ .name = "<repl>", .text = source }, err, .{ .color = self.vm.runtime.supports_color });
         try out.writeAll(buf.written());
         revo.lang.deinitError(self.gpa, err);
     }
@@ -281,7 +281,7 @@ pub const Session = struct {
     fn printRuntimeFailure(self: *Session, out: *std.Io.Writer, source: []const u8, failure: revo.RunFailure) !void {
         var buf = std.Io.Writer.Allocating.init(self.gpa);
         defer buf.deinit();
-        try failure.render(self.gpa, &buf.writer, source);
+        try failure.render(self.gpa, &buf.writer, source, self.vm.runtime.supports_color);
         try out.writeAll(buf.written());
     }
 
@@ -347,9 +347,9 @@ pub const Session = struct {
                 found = true;
                 const doc = revo.baselib.specs.moduleDoc(name);
                 if (doc.len > 0) {
-                    try revo.term.style(out, "\x1b[2m");
+                    try revo.term.style(out, "\x1b[2m", self.vm.runtime.supports_color);
                     try out.writeAll(doc);
-                    try revo.term.style(out, "\x1b[0m");
+                    try revo.term.style(out, "\x1b[0m", self.vm.runtime.supports_color);
                     try out.writeAll("\n\n");
                 }
             }
@@ -405,11 +405,11 @@ pub const Session = struct {
         var parse_arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
         defer parse_arena.deinit();
 
-        // lol
-        revo.lang.Parser.repl_mode = true;
-        defer revo.lang.Parser.repl_mode = false;
-
-        const parse_ok = switch (revo.lang.parseSourceReport(parse_arena.allocator(), snippet) catch |err| {
+        const parse_ok = switch (revo.lang.parseSourceReport(
+            parse_arena.allocator(),
+            snippet,
+            .{ .repl_mode = true },
+        ) catch |err| {
             try out.print("parse error: {}\n", .{err});
             return true;
         }) {
@@ -429,7 +429,9 @@ pub const Session = struct {
         };
         self.last_file = file_id;
 
-        var analysis = self.workspace.analyzeDetailed(self.gpa, file_id, .{}) catch |err| {
+        var analysis = self.workspace.analyzeDetailed(self.gpa, file_id, .{
+            .repl_mode = true,
+        }) catch |err| {
             try out.print("repl build error: {}\n", .{err});
             return true;
         };
@@ -445,7 +447,7 @@ pub const Session = struct {
         if (analysis.warnings) |w| {
             var buf = std.Io.Writer.Allocating.init(self.gpa);
             defer buf.deinit();
-            try revo.lang.renderWarnings(self.gpa, &buf.writer, .{ .name = "<repl>", .text = source }, w);
+            try revo.lang.renderWarnings(self.gpa, &buf.writer, .{ .name = "<repl>", .text = source }, w, .{ .color = self.vm.runtime.supports_color });
             try out.writeAll(buf.written());
         }
 
@@ -566,7 +568,7 @@ fn initTestEnv(alloc: std.mem.Allocator) !TestEnv {
     vm.* = try revo.VM.init(.{ .alloc = alloc, .io = std.testing.io, .diag_alloc = alloc });
     const session = try Session.init(vm, alloc, std.testing.io);
     const out = std.Io.Writer.Allocating.init(alloc);
-    revo.term.supports_color = false;
+    vm.runtime.supports_color = false;
     return TestEnv{ .vm = vm, .session = session, .out = out };
 }
 

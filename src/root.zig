@@ -29,6 +29,13 @@ pub const Runtime = struct {
     /// advance one stream instead of re-seeding identical generators
     prng: ?std.Random.DefaultPrng = null,
 
+    input_buf: [4096]u8 = undefined,
+    input_buf_len: usize = 0,
+
+    gensym_counter: u64 = 0,
+
+    supports_color: bool = term.defaultSupportsColor(),
+
     /// ret: a new runtime with its own vm
     pub fn init(alloc: std.mem.Allocator, io: std.Io, argv: []const [:0]const u8) !Runtime {
         var rt: Runtime = .{
@@ -273,30 +280,30 @@ pub const CoreAtoms = vm.CoreAtoms;
 /// (:f or :false or :nil or 0 or 0.0 or :undef or :missing) == :false
 pub const isFalse = vm.isFalse;
 
-pub fn printBuildError(gpa: std.mem.Allocator, source_info: lang.Source, err: lang.Error) void {
+pub fn printBuildError(gpa: std.mem.Allocator, source_info: lang.Source, err: lang.Error, color: bool) void {
     // todo
     if (comptime is_freestanding) return;
     var buf = std.Io.Writer.Allocating.init(gpa);
     defer buf.deinit();
-    lang.renderError(gpa, &buf.writer, source_info, err) catch {};
+    lang.renderError(gpa, &buf.writer, source_info, err, .{ .color = color }) catch {};
     std.debug.print("{s}", .{buf.written()});
 }
 
-pub fn printBuildWarning(gpa: std.mem.Allocator, source_info: lang.Source, report: lang.diagnostic.Report) void {
+pub fn printBuildWarning(gpa: std.mem.Allocator, source_info: lang.Source, report: lang.diagnostic.Report, color: bool) void {
     // todo
     if (comptime is_freestanding) return;
     var buf = std.Io.Writer.Allocating.init(gpa);
     defer buf.deinit();
-    lang.renderWarnings(gpa, &buf.writer, source_info, report) catch {};
+    lang.renderWarnings(gpa, &buf.writer, source_info, report, .{ .color = color }) catch {};
     std.debug.print("{s}", .{buf.written()});
 }
 
-pub fn printRunError(gpa: std.mem.Allocator, source: []const u8, failure: RunFailure) void {
+pub fn printRunError(gpa: std.mem.Allocator, source: []const u8, failure: RunFailure, color: bool) void {
     // todo
     if (comptime is_freestanding) return;
     var buf = std.Io.Writer.Allocating.init(gpa);
     defer buf.deinit();
-    failure.render(gpa, &buf.writer, source) catch {};
+    failure.render(gpa, &buf.writer, source, color) catch {};
     std.debug.print("{s}", .{buf.written()});
 }
 

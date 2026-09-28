@@ -54,6 +54,7 @@ pub fn buildWithWarnings(vm: *VM, source: Source, opts: BuildOptions, warnings: 
 
     var parsed = switch (try parse(arena.allocator(), source, .{
         .include_baselib_macros = opts.include_baselib_macros,
+        .repl_mode = opts.repl_mode,
     })) {
         .ok => |ok| ok,
         .err => |failure| {
@@ -167,6 +168,7 @@ pub const Source = struct {
 
 pub const ParseOptions = struct {
     include_baselib_macros: bool = false,
+    repl_mode: bool = false,
 };
 
 pub const CompileOptions = struct {
@@ -186,7 +188,12 @@ pub const BuildOptions = struct {
     mode: ProjectMode = .script,
     module_scope: bool = false, // build exports table from pub decls
     skip_preload: bool = false, // for repl
+    repl_mode: bool = false,
 };
+
+fn parserOpts(opts: ParseOptions) Parser.Options {
+    return .{ .repl_mode = opts.repl_mode };
+}
 
 pub const Parsed = struct {
     root: *Node,
@@ -319,7 +326,7 @@ pub const BuildResult = Result(Bytecode, Error);
 
 pub fn parse(allocator: std.mem.Allocator, source: Source, opts: ParseOptions) !ParseResult {
     if (!opts.include_baselib_macros) {
-        return switch (try Parser.parseSourceReport(allocator, source.text)) {
+        return switch (try Parser.parseSourceReport(allocator, source.text, parserOpts(opts))) {
             .ok => |expr| .{ .ok = .{ .root = expr } },
             .err => |failure| blk: {
                 var diag = failure;
@@ -336,12 +343,12 @@ pub fn parse(allocator: std.mem.Allocator, source: Source, opts: ParseOptions) !
     var preludes = try std.ArrayList(*Node).initCapacity(allocator, macro_srcs.len);
     defer preludes.deinit(allocator);
     for (macro_srcs) |src| {
-        switch (try Parser.parseSourceReport(allocator, src)) {
+        switch (try Parser.parseSourceReport(allocator, src, parserOpts(opts))) {
             .ok => |root| try preludes.append(allocator, root),
             .err => |failure| return .{ .err = failure },
         }
     }
-    const user: ParseResult = switch (try Parser.parseSourceReport(allocator, source.text)) {
+    const user: ParseResult = switch (try Parser.parseSourceReport(allocator, source.text, parserOpts(opts))) {
         .ok => |root| .{ .ok = .{ .root = root } },
         .err => |failure| blk: {
             var diag = failure;
@@ -432,28 +439,34 @@ pub fn compile(
     };
 }
 
-pub fn renderError(allocator: std.mem.Allocator, writer: *std.Io.Writer, source: Source, err: Error) !void {
+pub fn renderError(
+    allocator: std.mem.Allocator,
+    writer: *std.Io.Writer,
+    source: Source,
+    err: Error,
+    opts: diagnostic.RenderOptions,
+) !void {
     return switch (err) {
         .parse => |failure| blk: {
             var report = failure.report;
             report.source_name = report.source_name orelse source.name;
             report.source = source.text;
-            break :blk diagnostic.renderReport(allocator, writer, report);
+            break :blk diagnostic.renderReport(allocator, writer, report, opts);
         },
         .expand => |failure| blk: {
-            break :blk diagnostic.renderReport(allocator, writer, failure.report);
+            break :blk diagnostic.renderReport(allocator, writer, failure.report, opts);
         },
         .compile => |failure| blk: {
             var report = failure.report;
             report.source_name = report.source_name orelse source.name;
             report.source = source.text;
-            break :blk diagnostic.renderReport(allocator, writer, report);
+            break :blk diagnostic.renderReport(allocator, writer, report, opts);
         },
         .semantic => |failure| blk: {
             var report = failure.report;
             report.source_name = report.source_name orelse source.name;
             report.source = source.text;
-            break :blk diagnostic.renderReport(allocator, writer, report);
+            break :blk diagnostic.renderReport(allocator, writer, report, opts);
         },
     };
 }
@@ -461,11 +474,11 @@ pub fn renderError(allocator: std.mem.Allocator, writer: *std.Io.Writer, source:
 /// render a warnings report
 ///   ; same shape as errors
 ///     , never fails the build
-pub fn renderWarnings(allocator: std.mem.Allocator, writer: *std.Io.Writer, source: Source, report: diagnostic.Report) !void {
+pub fn renderWarnings(allocator: std.mem.Allocator, writer: *std.Io.Writer, source: Source, report: diagnostic.Report, opts: diagnostic.RenderOptions) !void {
     var rep = report;
     rep.source_name = rep.source_name orelse source.name;
     rep.source = source.text;
-    return diagnostic.renderReport(allocator, writer, rep);
+    return diagnostic.renderReport(allocator, writer, rep, opts);
 }
 
 pub fn deinitError(alloc: std.mem.Allocator, err: Error) void {

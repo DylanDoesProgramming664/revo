@@ -87,7 +87,7 @@ pub fn findImportPathForBinding(self: *Workspace, alloc: std.mem.Allocator, file
     //     : retry once without the last line, where imports live
     const texts: [2][]const u8 = .{ snap.text, txt.stripLastLine(snap.text) };
     for (texts) |text| {
-        const parsed = Parser.parseSourceReport(alloc, text) catch continue;
+        const parsed = Parser.parseSourceReport(alloc, text, .{}) catch continue;
         const root = switch (parsed) {
             .ok => |n| n,
             .err => continue,

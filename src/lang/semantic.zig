@@ -337,7 +337,7 @@ const SemanticChecker = struct {
         defer self.alloc.free(source_alloc);
 
         const source = self.alloc.dupe(u8, source_alloc) catch return null;
-        return Parser.parseSource(self.alloc, source) catch return null;
+        return Parser.parseSource(self.alloc, source, .{}) catch return null;
     }
 
     fn finishReport(self: *SemanticChecker) !diagnostic.Report {
@@ -2033,7 +2033,7 @@ test "graph mirrors the checker" {
     const alloc = arena.allocator();
 
     const src = "const x = 1\nfn f(x) do x end";
-    const parsed = try Parser.parseSource(alloc, src);
+    const parsed = try Parser.parseSource(alloc, src, .{});
     // wrapped like mergeWithPreludes does in production
     // , so top decls live one scope down from the root
     const items: []const *ast.Node = switch (parsed.expr) {

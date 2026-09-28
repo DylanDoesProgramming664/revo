@@ -151,7 +151,7 @@ pub fn freeLoadedSpecs(_: std.mem.Allocator, _: []const []const FnSpec) void {}
 fn collectMacroSpans(alloc: std.mem.Allocator, src: []const u8) ![]ast.Span {
     var arena = std.heap.ArenaAllocator.init(alloc);
     defer arena.deinit();
-    const parsed = try revo.lang.parseSourceReport(arena.allocator(), src);
+    const parsed = try revo.lang.parseSourceReport(arena.allocator(), src, .{});
 
     const tree = switch (parsed) {
         .ok => |node| node,
@@ -500,7 +500,7 @@ fn parseGroup(alloc: std.mem.Allocator, src: []const u8) ![]FnSpec {
     defer arena.deinit();
     const a = arena.allocator();
 
-    const parsed = try revo.lang.parseSourceReport(a, src);
+    const parsed = try revo.lang.parseSourceReport(a, src, .{});
     const root_node = switch (parsed) {
         .ok => |node| node,
         .err => return error.IfaceParseFailed,
@@ -1247,7 +1247,7 @@ test "module doc keeps paragraphs" {
         \\  go: fn(n: num) -> num,
         \\}
     ;
-    const parsed = try revo.lang.parseSourceReport(a, src);
+    const parsed = try revo.lang.parseSourceReport(a, src, .{});
     const node = switch (parsed) {
         .ok => |n| n,
         .err => return error.IfaceParseFailed,

@@ -10,7 +10,7 @@ pub fn runModule(vm: *revo.VM, source_path: []const u8, source: []const u8, modu
     const bytecode = switch (try lang.build(vm, .{ .name = source_path, .text = source }, opts)) {
         .ok => |ok| ok,
         .err => |lang_err| {
-            revo.printBuildError(vm.runtime.diagAlloc(), .{ .name = source_path, .text = source }, lang_err);
+            revo.printBuildError(vm.runtime.diagAlloc(), .{ .name = source_path, .text = source }, lang_err, vm.runtime.supports_color);
             vm.runtime.resetDiagArena();
             return error.ParseError;
         },

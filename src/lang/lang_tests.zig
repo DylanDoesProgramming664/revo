@@ -71,7 +71,7 @@ test "parser reports multiple syntax errors in one pass" {
 
             var buf = std.Io.Writer.Allocating.init(alloc);
             defer buf.deinit();
-            try lang.renderError(alloc, &buf.writer, .{ .text = source }, .{ .parse = failure });
+            try lang.renderError(alloc, &buf.writer, .{ .text = source }, .{ .parse = failure }, .{});
             try std.testing.expect(buf.written().len != 0);
         },
         else => return error.ExpectedCompileFailure,
@@ -1444,6 +1444,7 @@ test "runtime renderer includes source path" {
                 &buf.writer,
                 failure.report.source_name orelse "<source>",
                 source,
+                false,
             );
             try std.testing.expect(std.mem.find(u8, buf.written(), "examples/fail.rv:1:1") != null);
         },
@@ -1475,7 +1476,7 @@ test "runtime renderer includes stack trace call chain" {
         .err => |failure| {
             var buf = std.Io.Writer.Allocating.init(alloc);
             defer buf.deinit();
-            try failure.render(alloc, &buf.writer, source);
+            try failure.render(alloc, &buf.writer, source, false);
 
             try std.testing.expect(std.mem.find(u8, buf.written(), "stack trace:") != null);
             try std.testing.expect(std.mem.find(u8, buf.written(), "0: b at <source>:2:") != null);
@@ -5080,4 +5081,138 @@ test ".so imports are untyped on their own" {
             .err => return error.ExpectedCompileSuccess,
         }
     }
+}
+
+test "repl_mode leaves a function-local let as a local" {
+    try t.topTrueOpts(.{ .repl_mode = true },
+        \\fn find(haystack, needle) do
+        \\    const n = needle:len()
+        \\    let at = -1
+        \\    for i in 0..haystack:len() do
+        \\        if haystack:sub(i, n) == needle do
+        \\            at = i
+        \\            break(:nil)
+        \\        end
+        \\    end
+        \\    return at
+        \\end
+        \\find("hello", "ell") == 1
+    );
+}
+
+const module_with_loop_local =
+    \\pub fn find(haystack, needle) do
+    \\    const n = needle:len()
+    \\    let at = -1
+    \\    for i in 0..haystack:len() do
+    \\        if haystack:sub(i, n) == needle do
+    \\            at = i
+    \\            break(:nil)
+    \\        end
+    \\    end
+    \\    return at
+    \\end
+;
+
+test "a module imported on a repl line parses as a module" {
+    var m = try t.TmpMod.init(&.{.{
+        .path = "mod.rv",
+        .data = module_with_loop_local,
+    }});
+    defer m.deinit();
+
+    try t.topTrueOptsInDir(m.dir, .{ .repl_mode = true },
+        \\import {
+        \\    mod = "mod"
+        \\}
+        \\mod.find("hello", "ell") == 1
+    );
+}
+
+test "repl_mode still promotes a top-level binding to a global" {
+    try t.topTrueOpts(.{ .repl_mode = true },
+        \\let kept = 7
+        \\kept == 7
+    );
+}
+
+test "repl_mode does not leak into a module compiled with default options" {
+    const src =
+        \\import {
+        \\    mod = "stdmod"
+        \\}
+        \\mod.find("hello", "ell") == 1
+    ;
+    var m = try t.TmpMod.init(&.{.{ .path = "stdmod.rv", .data = module_with_loop_local }});
+    defer m.deinit();
+
+    var repl = try t.topResultOpts(src, m.dir, .{ .repl_mode = true });
+    repl.deinit();
+    var plain = try t.topResultOpts(src, m.dir, .{});
+    defer plain.deinit();
+    try std.testing.expect(!revo.isFalse(plain.value));
+}
+
+test "fmt %p does not leak escapes into a non-color host" {
+    var vm = try VM.init(t.runtime());
+    defer vm.deinit();
+    vm.runtime.supports_color = false;
+
+    const src = "const s = fmt(\"%p\", 42)\ns";
+    _ = revo.run.runModule(&vm, "<test>", src, false) catch return error.LangFailure;
+    const out = vm.mainResult();
+    try std.testing.expect(out.isString());
+    try std.testing.expect(std.mem.find(u8, vm.stringValue(out.asString().?), "\x1b[") == null);
+}
+
+test "fmt %p still colorizes when the host wants color" {
+    var vm = try VM.init(t.runtime());
+    defer vm.deinit();
+    vm.runtime.supports_color = true;
+
+    const src = "const s = fmt(\"%p\", 42)\ns";
+    _ = revo.run.runModule(&vm, "<test>", src, false) catch return error.LangFailure;
+    const out = vm.mainResult();
+    try std.testing.expect(out.isString());
+    try std.testing.expect(std.mem.find(u8, vm.stringValue(out.asString().?), "\x1b[") != null);
+}
+
+test "two vms can disagree about color" {
+    var a = try VM.init(t.runtime());
+    defer a.deinit();
+    var b = try VM.init(t.runtime());
+    defer b.deinit();
+
+    try std.testing.expectEqual(a.runtime.supports_color, b.runtime.supports_color);
+    a.runtime.supports_color = false;
+    try std.testing.expectEqual(false, a.runtime.supports_color);
+    try std.testing.expect(b.runtime.supports_color != false or a.runtime.supports_color == b.runtime.supports_color);
+}
+
+test "two vms have independent gensym counters" {
+    var a = try VM.init(t.runtime());
+    defer a.deinit();
+    var b = try VM.init(t.runtime());
+    defer b.deinit();
+
+    a.runtime.gensym_counter = 100;
+    b.runtime.gensym_counter = 500;
+    try std.testing.expectEqual(@as(u64, 100), a.runtime.gensym_counter);
+    try std.testing.expectEqual(@as(u64, 500), b.runtime.gensym_counter);
+
+    a.runtime.gensym_counter += 1;
+    try std.testing.expectEqual(@as(u64, 101), a.runtime.gensym_counter);
+    try std.testing.expectEqual(@as(u64, 500), b.runtime.gensym_counter);
+}
+
+test "two vms have independent stdin buffers" {
+    var a = try VM.init(t.runtime());
+    defer a.deinit();
+    var b = try VM.init(t.runtime());
+    defer b.deinit();
+
+    a.runtime.input_buf[0] = 'x';
+    a.runtime.input_buf_len = 1;
+    try std.testing.expectEqual(@as(usize, 0), b.runtime.input_buf_len);
+    try std.testing.expectEqual(@as(u8, 'x'), a.runtime.input_buf[0]);
 }

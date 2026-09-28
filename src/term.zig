@@ -1,7 +1,9 @@
 const revo = @import("revo");
 const std = @import("std");
 
-pub var supports_color: bool = !revo.is_freestanding;
+pub fn defaultSupportsColor() bool {
+    return !revo.is_freestanding;
+}
 
 pub fn isColorSupported(env: *std.process.Environ.Map, io: std.Io) bool {
     if (env.contains("NO_COLOR")) return false;
@@ -12,56 +14,56 @@ pub fn isColorSupported(env: *std.process.Environ.Map, io: std.Io) bool {
     return true;
 }
 
-pub fn style(writer: *std.Io.Writer, code: []const u8) !void {
-    if (supports_color) {
+pub fn style(writer: *std.Io.Writer, code: []const u8, color: bool) !void {
+    if (color) {
         try writer.writeAll(code);
     }
 }
 
-pub fn printError(writer: *std.Io.Writer, comptime fmt: []const u8, args: anytype) !void {
-    try style(writer, "\x1b[1m\x1b[31m");
+pub fn printError(writer: *std.Io.Writer, color: bool, comptime fmt: []const u8, args: anytype) !void {
+    try style(writer, "\x1b[1m\x1b[31m", color);
     try writer.writeAll("error: ");
-    try style(writer, "\x1b[0m");
-    try style(writer, "\x1b[1m");
+    try style(writer, "\x1b[0m", color);
+    try style(writer, "\x1b[1m", color);
     try writer.print(fmt ++ "\n", args);
-    try style(writer, "\x1b[0m");
+    try style(writer, "\x1b[0m", color);
     try writer.flush();
 }
 
-pub fn printWarning(writer: *std.Io.Writer, comptime fmt: []const u8, args: anytype) !void {
-    try style(writer, "\x1b[1m\x1b[33m");
+pub fn printWarning(writer: *std.Io.Writer, color: bool, comptime fmt: []const u8, args: anytype) !void {
+    try style(writer, "\x1b[1m\x1b[33m", color);
     try writer.writeAll("warning: ");
-    try style(writer, "\x1b[0m");
-    try style(writer, "\x1b[1m");
+    try style(writer, "\x1b[0m", color);
+    try style(writer, "\x1b[1m", color);
     try writer.print(fmt ++ "\n", args);
-    try style(writer, "\x1b[0m");
+    try style(writer, "\x1b[0m", color);
     try writer.flush();
 }
 
-pub fn printNote(writer: *std.Io.Writer, comptime fmt: []const u8, args: anytype) !void {
-    try style(writer, "\x1b[1m\x1b[34m");
+pub fn printNote(writer: *std.Io.Writer, color: bool, comptime fmt: []const u8, args: anytype) !void {
+    try style(writer, "\x1b[1m\x1b[34m", color);
     try writer.writeAll("note: ");
-    try style(writer, "\x1b[0m");
-    try style(writer, "\x1b[1m");
+    try style(writer, "\x1b[0m", color);
+    try style(writer, "\x1b[1m", color);
     try writer.print(fmt ++ "\n", args);
-    try style(writer, "\x1b[0m");
+    try style(writer, "\x1b[0m", color);
     try writer.flush();
 }
 
-pub fn printHelp(writer: *std.Io.Writer, comptime fmt: []const u8, args: anytype) !void {
-    try style(writer, "\x1b[1m\x1b[36m");
+pub fn printHelp(writer: *std.Io.Writer, color: bool, comptime fmt: []const u8, args: anytype) !void {
+    try style(writer, "\x1b[1m\x1b[36m", color);
     try writer.writeAll("help: ");
-    try style(writer, "\x1b[0m");
-    try style(writer, "\x1b[1m");
+    try style(writer, "\x1b[0m", color);
+    try style(writer, "\x1b[1m", color);
     try writer.print(fmt ++ "\n", args);
-    try style(writer, "\x1b[0m");
+    try style(writer, "\x1b[0m", color);
     try writer.flush();
 }
 
-pub fn printSuccess(writer: *std.Io.Writer, comptime fmt: []const u8, args: anytype) !void {
-    try style(writer, "\x1b[32m");
+pub fn printSuccess(writer: *std.Io.Writer, color: bool, comptime fmt: []const u8, args: anytype) !void {
+    try style(writer, "\x1b[32m", color);
     try writer.print(fmt ++ "\n", args);
-    try style(writer, "\x1b[0m");
+    try style(writer, "\x1b[0m", color);
     try writer.flush();
 }
 

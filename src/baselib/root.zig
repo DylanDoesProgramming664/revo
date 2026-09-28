@@ -64,8 +64,8 @@ pub const Impl = struct {
     }
 
     pub fn gensym(vm: *VM) !host.HostResult {
-        const n = gensym_counter;
-        gensym_counter += 1;
+        const n = vm.runtime.gensym_counter;
+        vm.runtime.gensym_counter += 1;
         const name = try std.fmt.allocPrint(vm.runtime.alloc, "__gensym_{d}", .{n});
         defer vm.runtime.alloc.free(name);
         return .data(try vm.ownValueStringNoDedup(name));
@@ -160,6 +160,8 @@ pub fn fmt(args: []const Value, vm: *VM) !host.HostResult {
     var result = std.Io.Writer.Allocating.init(vm.runtime.alloc);
     defer result.deinit();
 
+    const color = vm.runtime.supports_color;
+
     var arg_idx: usize = 1;
     var i: usize = 0;
 
@@ -172,23 +174,19 @@ pub fn fmt(args: []const Value, vm: *VM) !host.HostResult {
                 },
                 'v' => {
                     if (arg_idx >= args.len) return .errArity(args.len, arg_idx + 1);
-                    try append_data(&result.writer, args[arg_idx], vm, .plain);
+                    try append_data(&result.writer, args[arg_idx], vm, .plain, color);
                     arg_idx += 1;
                     i += 2;
                 },
                 '?' => {
                     if (arg_idx >= args.len) return .errArity(args.len, arg_idx + 1);
-                    try append_data(&result.writer, args[arg_idx], vm, .debug);
+                    try append_data(&result.writer, args[arg_idx], vm, .debug, color);
                     arg_idx += 1;
                     i += 2;
                 },
                 'p' => {
                     if (arg_idx >= args.len) return .errArity(args.len, arg_idx + 1);
-                    const old_supports = revo.term.supports_color;
-                    revo.term.supports_color = true;
-                    errdefer revo.term.supports_color = old_supports;
-                    try append_data(&result.writer, args[arg_idx], vm, .pretty);
-                    revo.term.supports_color = old_supports;
+                    try append_data(&result.writer, args[arg_idx], vm, .pretty, color);
                     arg_idx += 1;
                     i += 2;
                 },
@@ -257,8 +255,8 @@ pub fn dotest(args: []const Value, vm: *VM) !host.HostResult {
     w.flush() catch {};
     const res = vm.callFunctionParts(Value.new.function(body), null, &[0]Value{}, null) catch |err| {
         const failure = vm.runFailure(err);
-        failure.render(vm.runtime.alloc, &w.interface, vm.currentDebugSource() orelse "") catch {
-            try revo.term.printError(&w.interface, "hard-fail - {s}", .{@errorName(err)});
+        failure.render(vm.runtime.alloc, &w.interface, vm.currentDebugSource() orelse "", vm.runtime.supports_color) catch {
+            try revo.term.printError(&w.interface, vm.runtime.supports_color, "hard-fail - {s}", .{@errorName(err)});
             return .data(Value.new.nil());
         };
         return .data(Value.new.nil());
@@ -274,9 +272,9 @@ pub fn dotest(args: []const Value, vm: *VM) !host.HostResult {
 
         var obuf = std.Io.Writer.Allocating.init(vm.runtime.alloc);
         defer obuf.deinit();
-        try append_data(&obuf.writer, parts.payload.?, vm, .debug);
+        try append_data(&obuf.writer, parts.payload.?, vm, .debug, vm.runtime.supports_color);
 
-        try revo.term.printError(&w.interface, "fail - {s}", .{obuf.written()});
+        try revo.term.printError(&w.interface, vm.runtime.supports_color, "fail - {s}", .{obuf.written()});
     }
     return .data(Value.new.nil());
 }
@@ -291,7 +289,7 @@ pub fn dosuite(args: []const Value, vm: *VM) !host.HostResult {
         const failure = vm.runFailure(err);
         var buf = std.Io.Writer.Allocating.init(vm.runtime.alloc);
         defer buf.deinit();
-        failure.render(vm.runtime.alloc, &buf.writer, vm.currentDebugSource() orelse "") catch {
+        failure.render(vm.runtime.alloc, &buf.writer, vm.currentDebugSource() orelse "", vm.runtime.supports_color) catch {
             sw.interface.print("* suite hard-failed: \"{s}\"\n", .{@errorName(err)}) catch {};
             return .coreAtom(.nil);
         };
@@ -364,7 +362,7 @@ pub fn string_(args: []const Value, vm: *VM) !host.HostResult {
     if (mm) |m| return callUnaryMetamethod(m, args[0], vm);
     var buf = std.Io.Writer.Allocating.init(vm.runtime.alloc);
     defer buf.deinit();
-    try args[0].write(&buf.writer, vm, .plain);
+    try args[0].write(&buf.writer, vm, .plain, vm.runtime.supports_color);
     const str = try buf.toOwnedSlice();
     return .data(try vm.adoptValueString(str));
 }
@@ -512,11 +510,11 @@ pub fn assert_eq(args: []const Value, vm: *VM) !host.HostResult {
         var buf = std.Io.Writer.Allocating.init(vm.runtime.alloc);
         defer buf.deinit();
         try buf.writer.writeAll("assert_eq failed: ");
-        try append_data(&buf.writer, args[0], vm, .plain);
+        try append_data(&buf.writer, args[0], vm, .plain, vm.runtime.supports_color);
         try buf.writer.writeAll(" (");
         try buf.writer.writeAll(typeof(args[0], vm));
         try buf.writer.writeAll(") != ");
-        try append_data(&buf.writer, args[1], vm, .plain);
+        try append_data(&buf.writer, args[1], vm, .plain, vm.runtime.supports_color);
         try buf.writer.writeAll(" (");
         try buf.writer.writeAll(typeof(args[1], vm));
         try buf.writer.writeAll(")");
@@ -540,7 +538,7 @@ pub fn print(args: []const Value, vm: *VM) !host.HostResult {
     }
     for (args, 0..) |a, idx| {
         if (idx != 0) _ = try pw.interface.writeAll(" ");
-        try append_data(&pw.interface, a, vm, .plain);
+        try append_data(&pw.interface, a, vm, .plain, vm.runtime.supports_color);
     }
     try pw.interface.print("\n", .{});
     try pw.flush();
@@ -558,7 +556,7 @@ pub fn panic_(args: []const Value, vm: *VM) !host.HostResult {
     } else {
         for (args, 0..) |arg, idx| {
             if (idx != 0) try buf.writer.writeAll(" ");
-            try append_data(&buf.writer, arg, vm, .plain);
+            try append_data(&buf.writer, arg, vm, .plain, vm.runtime.supports_color);
         }
     }
     try vm.setPanicMessage(buf.written());
@@ -629,13 +627,9 @@ pub fn system_(tbl: []const Value, vm: *VM) !host.HostResult {
     }
 }
 
-// for some reason leftover buffer persists between input() calls so multiline os reads
-// just don't silently drop data after the first delimiter
-// no idea if they should be threadlocal
-var input_buf: [4096]u8 = undefined;
-var input_buf_len: usize = 0;
-
 pub fn input(args: []const Value, vm: *VM) !host.HostResult {
+    const rt = &vm.runtime;
+
     var read_eof = false;
     var delim: u8 = '\n';
 
@@ -669,21 +663,21 @@ pub fn input(args: []const Value, vm: *VM) !host.HostResult {
     defer result.deinit(vm.runtime.alloc);
 
     // drain leftover from previous call first
-    if (input_buf_len > 0 and !read_eof) {
-        if (std.mem.findScalar(u8, input_buf[0..input_buf_len], delim)) |di| {
-            try result.appendSlice(vm.runtime.alloc, input_buf[0..di]);
-            const rest = input_buf[di + 1 .. input_buf_len];
-            std.mem.copyForwards(u8, input_buf[0..rest.len], rest);
-            input_buf_len = rest.len;
+    if (rt.input_buf_len > 0 and !read_eof) {
+        if (std.mem.findScalar(u8, rt.input_buf[0..rt.input_buf_len], delim)) |di| {
+            try result.appendSlice(vm.runtime.alloc, rt.input_buf[0..di]);
+            const rest = rt.input_buf[di + 1 .. rt.input_buf_len];
+            std.mem.copyForwards(u8, rt.input_buf[0..rest.len], rest);
+            rt.input_buf_len = rest.len;
             return host.HostResult.Ok(vm, try vm.adoptValueString(try result.toOwnedSlice(vm.runtime.alloc)));
         }
 
-        try result.appendSlice(vm.runtime.alloc, input_buf[0..input_buf_len]);
-        input_buf_len = 0;
+        try result.appendSlice(vm.runtime.alloc, rt.input_buf[0..rt.input_buf_len]);
+        rt.input_buf_len = 0;
     }
 
     while (true) {
-        const n = file.readStreaming(vm.runtime.io, &.{input_buf[input_buf_len..]}) catch |err| switch (err) {
+        const n = file.readStreaming(vm.runtime.io, &.{rt.input_buf[rt.input_buf_len..]}) catch |err| switch (err) {
             error.EndOfStream => {
                 if (result.items.len > 0)
                     return host.HostResult.Ok(vm, try vm.adoptValueString(try result.toOwnedSlice(vm.runtime.alloc)));
@@ -691,22 +685,20 @@ pub fn input(args: []const Value, vm: *VM) !host.HostResult {
             },
             else => |e| return e,
         };
-        const total = input_buf_len + n;
+        const total = rt.input_buf_len + n;
         if (!read_eof) {
-            if (std.mem.findScalar(u8, input_buf[0..total], delim)) |di| {
-                try result.appendSlice(vm.runtime.alloc, input_buf[0..di]);
-                const rest = input_buf[di + 1 .. total];
-                std.mem.copyForwards(u8, input_buf[0..rest.len], rest);
-                input_buf_len = rest.len;
+            if (std.mem.findScalar(u8, rt.input_buf[0..total], delim)) |di| {
+                try result.appendSlice(vm.runtime.alloc, rt.input_buf[0..di]);
+                const rest = rt.input_buf[di + 1 .. total];
+                std.mem.copyForwards(u8, rt.input_buf[0..rest.len], rest);
+                rt.input_buf_len = rest.len;
                 return host.HostResult.Ok(vm, try vm.adoptValueString(try result.toOwnedSlice(vm.runtime.alloc)));
             }
         }
-        try result.appendSlice(vm.runtime.alloc, input_buf[0..total]);
-        input_buf_len = 0;
+        try result.appendSlice(vm.runtime.alloc, rt.input_buf[0..total]);
+        rt.input_buf_len = 0;
     }
 }
-
-var gensym_counter: u64 = 0;
 
 test "gensym produces different values on each call" {
     try revo.lang.test_helpers.topAtom(
@@ -856,8 +848,8 @@ pub fn import(args: []const Value, vm: *VM) !host.HostResult {
     return .data(result);
 }
 
-fn append_data(writer: *std.Io.Writer, val: Value, vm: *VM, mode: Value.PrintMode) !void {
-    try val.write(writer, vm, mode);
+fn append_data(writer: *std.Io.Writer, val: Value, vm: *VM, mode: Value.PrintMode, color: bool) !void {
+    try val.write(writer, vm, mode, color);
 }
 
 pub fn callUnaryMetamethod(mm: Value, val: Value, vm: *VM) host.HostResult {

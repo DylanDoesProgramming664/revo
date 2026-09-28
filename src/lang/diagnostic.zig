@@ -309,30 +309,35 @@ pub fn firstWarn(report: Report) ?[]const u8 {
 ///   codes print after the text
 ///   ; tips and notes never carry one
 ///
-fn printHeader(writer: *std.Io.Writer, severity: Severity, code: ?[]const u8, text: []const u8) !void {
+fn printHeader(writer: *std.Io.Writer, severity: Severity, code: ?[]const u8, text: []const u8, opts: RenderOptions) !void {
     if (code) |c| switch (severity) {
-        .err => try term.printError(writer, "{s} [{s}]", .{ text, c }),
-        .warning => try term.printWarning(writer, "{s} [{s}]", .{ text, c }),
-        .note => try term.printNote(writer, "{s} [{s}]", .{ text, c }),
-        .help => try term.printHelp(writer, "{s} [{s}]", .{ text, c }),
+        .err => try term.printError(writer, opts.color, "{s} [{s}]", .{ text, c }),
+        .warning => try term.printWarning(writer, opts.color, "{s} [{s}]", .{ text, c }),
+        .note => try term.printNote(writer, opts.color, "{s} [{s}]", .{ text, c }),
+        .help => try term.printHelp(writer, opts.color, "{s} [{s}]", .{ text, c }),
     } else switch (severity) {
-        .err => try term.printError(writer, "{s}", .{text}),
-        .warning => try term.printWarning(writer, "{s}", .{text}),
-        .note => try term.printNote(writer, "{s}", .{text}),
-        .help => try term.printHelp(writer, "{s}", .{text}),
+        .err => try term.printError(writer, opts.color, "{s}", .{text}),
+        .warning => try term.printWarning(writer, opts.color, "{s}", .{text}),
+        .note => try term.printNote(writer, opts.color, "{s}", .{text}),
+        .help => try term.printHelp(writer, opts.color, "{s}", .{text}),
     }
 }
+
+pub const RenderOptions = struct {
+    color: bool = false,
+};
 
 /// render a full report to the writer
 pub fn renderReport(
     alloc: std.mem.Allocator,
     writer: *std.Io.Writer,
     report: Report,
+    opts: RenderOptions,
 ) !void {
     const source_name = report.source_name orelse "<source>";
     const source = report.source orelse "";
     if (report.parts.len == 0 and report.message.len != 0) {
-        try printHeader(writer, report.severity, report.code, report.message);
+        try printHeader(writer, report.severity, report.code, report.message, opts);
         return;
     }
 
@@ -343,7 +348,7 @@ pub fn renderReport(
         switch (part) {
             .@"error" => |message| {
                 if (header_seen) try writer.writeByte('\n');
-                try printHeader(writer, .err, report.code, message);
+                try printHeader(writer, .err, report.code, message, opts);
                 header_seen = true;
             },
             .span => |span| {
@@ -356,6 +361,7 @@ pub fn renderReport(
                         span.source orelse source,
                         span.span,
                         msg,
+                        opts,
                     ),
                     .secondary => try renderSecondarySpan(
                         writer,
@@ -368,22 +374,22 @@ pub fn renderReport(
             },
             .tip => |tip| {
                 if (header_seen) try writer.writeByte('\n');
-                try printHeader(writer, .help, null, tip);
+                try printHeader(writer, .help, null, tip, opts);
                 header_seen = true;
             },
             .warn => |warn| {
                 if (header_seen) try writer.writeByte('\n');
-                try printHeader(writer, .warning, report.code, warn);
+                try printHeader(writer, .warning, report.code, warn, opts);
                 header_seen = true;
             },
             .note => |note| {
                 if (header_seen) try writer.writeByte('\n');
-                try printHeader(writer, .note, null, note);
+                try printHeader(writer, .note, null, note, opts);
                 header_seen = true;
             },
             .suggestion => |sug| {
                 if (header_seen) try writer.writeByte('\n');
-                try printHeader(writer, .help, null, sug.message);
+                try printHeader(writer, .help, null, sug.message, opts);
                 // replacement carries its own newline + indent for the edit,
                 // show it trimmed so the `+` line reads as a diff
                 const shown = std.mem.trim(u8, sug.replacement, " \t\r\n");
@@ -412,6 +418,7 @@ pub fn renderAt(
     message: []const u8,
     labels: []const Label,
     notes: []const Note,
+    opts: RenderOptions,
 ) !void {
     const part_count = 1 + @as(usize, @intFromBool(span != null)) + labels.len + notes.len;
     var parts = try alloc.alloc(Part, part_count);
@@ -438,7 +445,7 @@ pub fn renderAt(
         .parts = parts,
         .source_name = source_name,
         .source = source,
-    });
+    }, opts);
 }
 
 fn renderTrace(writer: *std.Io.Writer, frame: TraceFrame, idx: usize) !void {
@@ -592,32 +599,32 @@ fn extractSpan(
     };
 }
 
-fn renderContextBefore(writer: *std.Io.Writer, extracted: ExtractedSpan, comptime dim: bool) !void {
+fn renderContextBefore(writer: *std.Io.Writer, extracted: ExtractedSpan, comptime dim: bool, opts: RenderOptions) !void {
     var before_idx: usize = extracted.ctx_before_len;
     while (before_idx > 0) {
         before_idx -= 1;
         const cl = extracted.ctx_before[before_idx];
-        if (dim and term.supports_color) try writer.writeAll(COLOR_DIM);
+        if (dim and opts.color) try writer.writeAll(COLOR_DIM);
         try writeLineNumber(writer, cl.num, extracted.line_width);
         try writeExpanded(writer, cl.text, 0);
         try writer.writeByte('\n');
-        if (dim and term.supports_color) try writer.writeAll(COLOR_RESET);
+        if (dim and opts.color) try writer.writeAll(COLOR_RESET);
     }
     if (extracted.ctx_before_len > 0) {
         try writeBlankPipeLine(writer, extracted.line_width, 0);
     }
 }
 
-fn renderContextAfter(writer: *std.Io.Writer, extracted: ExtractedSpan, comptime dim: bool) !void {
+fn renderContextAfter(writer: *std.Io.Writer, extracted: ExtractedSpan, comptime dim: bool, opts: RenderOptions) !void {
     if (extracted.ctx_after_len > 0) {
         try writeBlankPipeLine(writer, extracted.line_width, 0);
     }
     for (extracted.ctx_after[0..extracted.ctx_after_len]) |cl| {
-        if (dim and term.supports_color) try writer.writeAll(COLOR_DIM);
+        if (dim and opts.color) try writer.writeAll(COLOR_DIM);
         try writeLineNumber(writer, cl.num, extracted.line_width);
         try writeExpanded(writer, cl.text, 0);
         try writer.writeByte('\n');
-        if (dim and term.supports_color) try writer.writeAll(COLOR_RESET);
+        if (dim and opts.color) try writer.writeAll(COLOR_RESET);
     }
 }
 
@@ -722,12 +729,13 @@ fn renderSpanBlock(
     source: []const u8,
     location: ast.Span,
     label_message: ?[]const u8,
+    opts: RenderOptions,
 ) !void {
     const start_line = if (location.line == 0) 1 else location.line;
     const start_column = if (location.column == 0) 1 else location.column;
 
     if (countSpanLines(source, location.start, location.end) > 1) {
-        return renderBoxSpanBlock(alloc, writer, source_name, source, location, label_message);
+        return renderBoxSpanBlock(alloc, writer, source_name, source, location, label_message, opts);
     }
 
     try writer.print(" --> {s}:{d}:{d}\n", .{ source_name, start_line, start_column });
@@ -735,7 +743,7 @@ fn renderSpanBlock(
     const extracted = try extractSpan(alloc, source, location, start_line, start_column) orelse return;
     defer extracted.deinit(alloc);
 
-    try renderContextBefore(writer, extracted, false);
+    try renderContextBefore(writer, extracted, false, opts);
 
     const bookend_threshold = 10;
     const total = extracted.lines.len;
@@ -789,7 +797,7 @@ fn renderSpanBlock(
         }
     }
 
-    try renderContextAfter(writer, extracted, false);
+    try renderContextAfter(writer, extracted, false, opts);
 }
 
 fn renderBoxSpanBlock(
@@ -799,20 +807,21 @@ fn renderBoxSpanBlock(
     source: []const u8,
     location: ast.Span,
     label_message: ?[]const u8,
+    opts: RenderOptions,
 ) !void {
     const start_line = if (location.line == 0) 1 else location.line;
     const start_column = if (location.column == 0) 1 else location.column;
 
     try writer.print(" --> {s}:{d}:{d}\n", .{ source_name, start_line, start_column });
-    if (term.supports_color) try writer.writeAll(COLOR_DIM);
+    if (opts.color) try writer.writeAll(COLOR_DIM);
     try writePipePrefix(writer, 0);
     try writer.writeByte('\n');
-    if (term.supports_color) try writer.writeAll(COLOR_RESET);
+    if (opts.color) try writer.writeAll(COLOR_RESET);
 
     const extracted = try extractSpan(alloc, source, location, start_line, start_column) orelse return;
     defer extracted.deinit(alloc);
 
-    try renderContextBefore(writer, extracted, true);
+    try renderContextBefore(writer, extracted, true, opts);
 
     const bookend_threshold = 10;
     const total = extracted.lines.len;
@@ -855,11 +864,11 @@ fn renderBoxSpanBlock(
     for (extracted.lines, 0..) |cl, i| {
         if (total > bookend_threshold and i >= tail_cut and i < tail_start) {
             if (!bookend_printed) {
-                if (term.supports_color) try writer.writeAll(COLOR_DIM);
+                if (opts.color) try writer.writeAll(COLOR_DIM);
                 try writeBoxPrefix(writer, extracted.line_width, 2);
                 for (0..marker_offset) |_| try writer.writeByte(' ');
                 try writer.print("... {d} lines ...\n", .{total - tail_cut - (total - tail_start)});
-                if (term.supports_color) try writer.writeAll(COLOR_RESET);
+                if (opts.color) try writer.writeAll(COLOR_RESET);
                 bookend_printed = true;
             }
             continue;
@@ -880,7 +889,7 @@ fn renderBoxSpanBlock(
     if (label_message) |msg| try writer.print(" {s}", .{msg});
     try writer.writeByte('\n');
 
-    try renderContextAfter(writer, extracted, true);
+    try renderContextAfter(writer, extracted, true, opts);
 }
 
 test "single line span" {
@@ -895,6 +904,7 @@ test "single line span" {
         "boom",
         &.{.{ .span = .{ .start = 14, .end = 15, .line = 2, .column = 5 }, .message = "here" }},
         &.{.{ .message = "try something else" }},
+        .{},
     );
     try std.testing.expect(buf.written().len != 0);
     const output = buf.written();
@@ -919,6 +929,7 @@ test "multi-line span with bracket" {
         "x wants string, got number",
         &.{},
         &.{},
+        .{},
     );
     const output = buf.written();
     try std.testing.expect(std.mem.find(u8, output, "-->") != null);
@@ -979,7 +990,7 @@ test "render report prints multiple error blocks" {
         },
     };
 
-    try renderReport(alloc, &buf.writer, report);
+    try renderReport(alloc, &buf.writer, report, .{});
     try std.testing.expect(std.mem.find(u8, buf.written(), "first problem") != null);
     try std.testing.expect(std.mem.find(u8, buf.written(), "second problem") != null);
 }
@@ -1005,7 +1016,7 @@ test "warnings report renders severity and code" {
         },
     };
 
-    try renderReport(alloc, &buf.writer, report);
+    try renderReport(alloc, &buf.writer, report, .{});
     const output = buf.written();
     try std.testing.expect(std.mem.find(u8, output, "warning:") != null);
     try std.testing.expect(std.mem.find(u8, output, "[non-exhaustive-match]") != null);
@@ -1038,7 +1049,7 @@ test "suggestion renders as help with replacement" {
         },
     };
 
-    try renderReport(alloc, &buf.writer, report);
+    try renderReport(alloc, &buf.writer, report, .{});
     const output = buf.written();
     try std.testing.expect(std.mem.find(u8, output, "help:") != null);
     try std.testing.expect(std.mem.find(u8, output, "add an explicit nil arm") != null);
@@ -1049,4 +1060,46 @@ test "suggestion renders as help with replacement" {
     const sug = copied.parts[1].suggestion;
     try std.testing.expectEqualStrings("add an explicit nil arm", sug.message);
     try std.testing.expectEqualStrings("\n| _ => :nil", sug.replacement);
+}
+
+test "render options decide color, and nothing else does" {
+    const src =
+        \\let x = 1
+        \\let y = 2
+    ;
+    const span = ast.Span{ .start = 0, .end = 5, .line = 1, .column = 1 };
+
+    var plain = std.Io.Writer.Allocating.init(std.testing.allocator);
+    defer plain.deinit();
+    try renderAt(
+        std.testing.allocator,
+        &plain.writer,
+        "t.rv",
+        src,
+        span,
+        "boom",
+        &.{},
+        &.{},
+        .{ .color = false },
+    );
+
+    var colored = std.Io.Writer.Allocating.init(std.testing.allocator);
+    defer colored.deinit();
+    try renderAt(
+        std.testing.allocator,
+        &colored.writer,
+        "t.rv",
+        src,
+        span,
+        "boom",
+        &.{},
+        &.{},
+        .{ .color = true },
+    );
+
+    try std.testing.expect(std.mem.find(u8, plain.written(), "\x1b[") == null);
+    try std.testing.expect(std.mem.find(u8, colored.written(), "\x1b[") != null);
+
+    try std.testing.expect(std.mem.find(u8, colored.written(), "let y = 2") != null);
+    try std.testing.expect(std.mem.find(u8, plain.written(), "let y = 2") != null);
 }

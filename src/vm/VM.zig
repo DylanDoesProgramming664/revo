@@ -938,7 +938,7 @@ pub fn panicFromErrPayload(self: *VM, payload: ?Value, pc: usize) error{ OutOfMe
     if (payload) |p| {
         var buf = std.Io.Writer.Allocating.init(self.runtime.alloc);
         defer buf.deinit();
-        p.write(&buf.writer, self, .pretty) catch |err| switch (err) {
+        p.write(&buf.writer, self, .pretty, self.runtime.supports_color) catch |err| switch (err) {
             error.OutOfMemory => return error.OutOfMemory,
             else => return error.Panic,
         };

@@ -129,7 +129,7 @@ pub const Impl = struct {
 
         for (table.array.items, 0..) |item, idx| {
             if (idx > 0) try buf.writer.writeAll(delim_str);
-            try item.write(&buf.writer, vm, .plain);
+            try item.write(&buf.writer, vm, .plain, vm.runtime.supports_color);
         }
 
         const slice = try buf.toOwnedSlice();

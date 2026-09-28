@@ -250,7 +250,7 @@ fn renderErrorToBuf(source: []const u8, out: []u8, failure: revo.lang.Error) usi
     };
     defer vm.runtime.resetDiagArena();
     var dw = DirectWriter.init(out);
-    revo.lang.renderError(vm.runtime.alloc, &dw.writer, .{ .name = "(wasm)", .text = source }, failure) catch {
+    revo.lang.renderError(vm.runtime.alloc, &dw.writer, .{ .name = "(wasm)", .text = source }, failure, .{ .color = vm.runtime.supports_color }) catch {
         wasm_last_call_ok = false;
         return 0;
     };
@@ -271,7 +271,7 @@ fn renderRunFailureToBuf(source: []const u8, out: []u8, failure: revo.RunFailure
     };
     defer vm.runtime.resetDiagArena();
     var dw = DirectWriter.init(out);
-    failure.render(vm.runtime.alloc, &dw.writer, source) catch {
+    failure.render(vm.runtime.alloc, &dw.writer, source, vm.runtime.supports_color) catch {
         wasm_last_call_ok = false;
         return 0;
     };
@@ -324,7 +324,7 @@ export fn revo_wasm_eval(source_ptr: [*]const u8, source_len: usize, out_ptr: [*
         .ok => {
             const data = vm.currentResult();
             var dw = DirectWriter.init(out);
-            print.writeValue(data, &dw.writer, vm, .plain) catch {
+            print.writeValue(data, &dw.writer, vm, .plain, vm.runtime.supports_color) catch {
                 wasm_last_call_ok = false;
                 return 0;
             };
