@@ -1429,6 +1429,41 @@ const SemanticChecker = struct {
         }
     }
 
+    /// an `{a, b} = v` target already has a declared type from an bind
+    ///   , so hold it to the element type
+    ///
+    /// only fires when the element type is actually known
+    ///   , which needs a structurally annotated source
+    fn checkPatternTargets(self: *SemanticChecker, pattern: *const ast.Node, context: types_mod.TypeInfo) !void {
+        const items = switch (pattern.expr) {
+            .table_pattern => |items| items,
+            else => return,
+        };
+
+        for (items, 0..) |item, i| {
+            const name = switch (item.expr) {
+                .ident => |n| n,
+                .ascribed => |a| if (a.expr.expr == .ident) a.expr.expr.ident else continue,
+                .table_pattern => {
+                    const elem = patternElemType(self, context, i) orelse continue;
+                    try self.checkPatternTargets(item, elem);
+                    continue;
+                },
+                else => continue,
+            };
+            if (ast.isDiscardName(name)) continue;
+            if (!self.typed_names.contains(name)) continue;
+
+            const expected = self.lookup(name) orelse continue;
+            if (expected.tag == .any) continue;
+            const elem = patternElemType(self, context, i) orelse continue;
+
+            if (!types_mod.canCoerce(elem, expected)) {
+                try self.appendTypeMismatch(item.span, name, expected, elem);
+            }
+        }
+    }
+
     /// positional element type of a destructured value, or null when unknown.
     fn patternElemType(self: *SemanticChecker, context: types_mod.TypeInfo, i: usize) ?types_mod.TypeInfo {
         switch (context.tag) {
@@ -1604,6 +1639,11 @@ const SemanticChecker = struct {
                     }
                     try self.markEscaped(field.object.expr.ident);
                 }
+            },
+            .table_pattern => {
+                try self.checkPatternTargets(target, value_type);
+                try self.checkPatternAscriptions(target, value_type);
+                _ = try self.declarePatternNames(target);
             },
             .index => |idx| {
                 // static keys join the known fields so later reads see

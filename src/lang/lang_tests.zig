@@ -5216,3 +5216,62 @@ test "two vms have independent stdin buffers" {
     try std.testing.expectEqual(@as(usize, 0), b.runtime.input_buf_len);
     try std.testing.expectEqual(@as(u8, 'x'), a.runtime.input_buf[0]);
 }
+
+test "destructuring assignment" {
+    // rebinds existing locals
+    try t.topTrue(
+        \\let a = 1
+        \\let b = 2
+        \\{a, b} = {3, 4}
+        \\a == 3 and b == 4
+    );
+    // swaps
+    try t.topTrue(
+        \\let a = 5
+        \\let b = 10
+        \\{a, b} = {b, a}
+        \\a == 10 and b == 5
+    );
+    // works inside a function
+    try t.topTrue(
+        \\fn swap() do
+        \\    let a = 1
+        \\    let b = 2
+        \\    {a, b} = {b, a}
+        \\    return a * 10 + b
+        \\end
+        \\swap() == 21
+    );
+    // discards
+    try t.topTrue(
+        \\let a = 1
+        \\{_, a} = {9, 7}
+        \\a == 7
+    );
+    // shape is checked
+    try t.expectCompileFailure(
+        \\let a = 1
+        \\let b = 2
+        \\{a, b} = {3, 4, 5}
+    ,
+        .ParseError,
+        3,
+        10,
+        "table assignment expects 2 items, got 3",
+    );
+    // holds the target type"
+    try t.expectSemanticError(
+        \\let src: {num, num} = {3, 4}
+        \\let a: string = ""
+        \\let b: num = 0
+        \\{a, b} = src
+    );
+    // accepts a matching target type
+    try t.topTrue(
+        \\let src: {num, num} = {3, 4}
+        \\let a: num = 0
+        \\let b: num = 0
+        \\{a, b} = src
+        \\a == 3 and b == 4
+    );
+}

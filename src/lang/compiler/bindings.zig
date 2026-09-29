@@ -204,6 +204,27 @@ pub fn bindPattern(
     }
 }
 
+/// like bindPattern, but the names are already declared
+fn storePattern(self: *Compiler, pattern: *const Node, source_idx: usize) !void {
+    switch (pattern.expr) {
+        .ident => |name| {
+            if (ast.isDiscardName(name)) return;
+            try self.spans.append(self.alloc, self.active_span);
+            try storeIdentTop(self, name, pattern, pattern);
+            return;
+        },
+        .table_pattern => |items| {
+            for (items, 0..) |item, idx| {
+                if (item.expr != .ident and item.expr != .table_pattern and item.expr != .ascribed) continue;
+                try control.fetchPatternElem(self, .{ .reg = source_idx }, idx);
+                try storePattern(self, item, self.active_registers - 1);
+            }
+        },
+        .ascribed => |a| try storePattern(self, a.expr, source_idx),
+        else => {},
+    }
+}
+
 pub fn compileAssign(
     self: *Compiler,
     target: *const Node,
@@ -217,7 +238,7 @@ pub fn compileAssign(
     }
     try self.compile(value, true);
     const src_idx = self.active_registers - 1;
-    return bindPattern(self, target, src_idx, .let);
+    return storePattern(self, target, src_idx);
 }
 
 pub fn compileCompound(
