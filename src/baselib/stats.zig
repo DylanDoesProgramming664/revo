@@ -33,10 +33,18 @@ const RunningStats = struct {
     prd: f64 = 0.0,
     // statistical moments, mom1 is mean
     mom1: f64 = 0.0,
-    mom1_comp: f64 = 0.0,
     mom2: f64 = 0.0,
     mom3: f64 = 0.0,
     mom4: f64 = 0.0,
+    // compensation variables for float precision
+    cmp1: f64 = 0.0,
+    cmp2: f64 = 0.0,
+    cmp3: f64 = 0.0,
+    cmp4: f64 = 0.0,
+    // cmp1: std.atomic.Value(f64) = std.atomic.Value(f64).init(0.0),
+    // cmp2: std.atomic.Value(f64) = std.atomic.Value(f64).init(0.0),
+    // cmp3: std.atomic.Value(f64) = std.atomic.Value(f64).init(0.0),
+    // cmp4: std.atomic.Value(f64) = std.atomic.Value(f64).init(0.0),
     // hashmap for tracking frequencies
     freq: std.AutoHashMap(u64, usize),
     imode: f64 = undefined,
@@ -90,20 +98,45 @@ const RunningStats = struct {
             self.imode_count = this_count;
             self.imode = x;
         }
-
+        
         const nf = self.n_float();
-        const nm1_float = @as(f64, @floatFromInt(self.n - 1));
+        
+        // 1. Calculate deltas
         const delta = x - self.mom1;
-        const delta_n = (delta / nf) - self.mom1_comp;
+        const delta_n = delta / nf;
         const delta_n2 = delta_n * delta_n;
-        const term1 = delta * delta_n * nm1_float;
-        self.mom4 += term1 * delta_n2 * (nf * nf - 3 * nf + 3) + 6 * delta_n2 * self.mom2 - 4 * delta_n * self.mom3;
-        self.mom3 += term1 * delta_n * (nf - 2) - 3 * delta_n * self.mom2;
-        self.mom2 += term1;
-        // mean compensation for tail-end precision
-        const next_mom1 = self.mom1 + delta_n;
-        self.mom1_comp = (next_mom1 - self.mom1) - delta_n;
-        self.mom1 = next_mom1;
+        const term1 = delta * delta_n * (nf - 1);
+        
+        // 2. Compute the exact increments
+        const delta_mom4 = term1 * delta_n2 * (nf * nf - 3.0 * nf + 3.0) + (6.0 * delta_n2 * self.mom2) - (4.0 * delta_n * self.mom3);
+        const delta_mom3 = term1 * delta_n * (nf - 2.0) - (3.0 * delta_n * self.mom2);
+        const delta_mom2 = term1;
+        const delta_mom1 = delta_n;
+
+        // 3. Apply Kahan Summation to preserve low-order bits
+        // Accumulate mom4
+        const y4 = delta_mom4 - self.cmp4;
+        const t4 = self.mom4 + y4;
+        self.cmp4 = (t4 - self.mom4) - y4;
+        self.mom4 = t4;
+        
+        // Accumulate mom3
+        const y3 = delta_mom3 - self.cmp3;
+        const t3 = self.mom3 + y3;
+        self.cmp3 = (t3 - self.mom3) - y3;
+        self.mom3 = t3;
+
+        // Accumulate mom3
+        const y2 = delta_mom2 - self.cmp2;
+        const t2 = self.mom2 + y2;
+        self.cmp2 = (t2 - self.mom2) - y2;
+        self.mom2 = t2;
+
+        // Accumulate mom1 (Mean)
+        const y1 = delta_mom1 - self.cmp1;
+        const t1 = self.mom1 + y1;
+        self.cmp1 = (t1 - self.mom1) - y1;
+        self.mom1 = t1;
     }
 
     fn pushValue(self: *RunningStats, data: *std.ArrayList(f64)) !void {
@@ -386,18 +419,6 @@ pub const Impl = struct {
         return .data(Value.new.table(result_table_id));
     }
 
-    // stats.mean(table) -> num
-    // Arithmetic mean (“average”) of data.
-    pub fn mean(vm: *VM, table_id: Args.table) !HostResult {
-        return numStat(vm, table_id, RunningStats.mean);
-    }
-
-    // stats.geomean(table) -> num
-    // Geometric mean of data.
-    pub fn geomean(vm: *VM, table_id: Args.table) !HostResult {
-        return numStat(vm, table_id, RunningStats.geomean);
-    }
-
     // stats.median(table) -> num
     // Middle value of input data.
     pub fn median(vm: *VM, table_id: Args.table) !HostResult {
@@ -481,54 +502,6 @@ pub const Impl = struct {
         return .data(mode_val);
     }
 
-    // stats.variance(table) -> num
-    // Population variance of the data.
-    pub fn variance(vm: *VM, table_id: Args.table) !HostResult {
-        return numStat(vm, table_id, RunningStats.variance);
-    }
-
-    // stats.sample_variance(table) -> num
-    // Sample variance of the data.
-    pub fn sample_variance(vm: *VM, table_id: Args.table) !HostResult {
-        return numStat(vm, table_id, RunningStats.varianceS);
-    }
-
-    // stats.stdev(table) -> num
-    // Population standard deviation of the data.
-    pub fn stdev(vm: *VM, table_id: Args.table) !HostResult {
-        return numStat(vm, table_id, RunningStats.standardDeviation);
-    }
-
-    // stats.sample_stdev(table) -> num
-    // Sample standard deviation of the data.
-    pub fn sample_stdev(vm: *VM, table_id: Args.table) !HostResult {
-        return numStat(vm, table_id, RunningStats.standardDeviationS);
-    }
-
-    // stats.skewness(table) -> num
-    // Population skewness of the data.
-    pub fn skewness(vm: *VM, table_id: Args.table) !HostResult {
-        return numStat(vm, table_id, RunningStats.skewness);
-    }
-
-    // stats.sample_skewness(table) -> num
-    // Sample skewness of the data.
-    pub fn sample_skewness(vm: *VM, table_id: Args.table) !HostResult {
-        return numStat(vm, table_id, RunningStats.skewnessS);
-    }
-
-    // stats.kurtosis(table) -> num
-    // Population kurtosis of the data.
-    pub fn kurtosis(vm: *VM, table_id: Args.table) !HostResult {
-        return numStat(vm, table_id, RunningStats.kurtosis);
-    }
-
-    // stats.sample_kurtosis(table) -> num
-    // Sample kurtosis of the data.
-    pub fn sample_kurtosis(vm: *VM, table_id: Args.table) !HostResult {
-        return numStat(vm, table_id, RunningStats.kurtosisS);
-    }
-
     // stats.statistics(table) -> table
     // table of all statistics of the input data
     pub fn statistics(vm: *VM, table_id: Args.table) !HostResult {
@@ -550,6 +523,7 @@ pub const Impl = struct {
         try result_table.put(result_table_id, vm, try vm.atomValue("mean"), Value.new.num(runningStats.mean()));
         try result_table.put(result_table_id, vm, try vm.atomValue("median"), (try median(vm, table_id)).ok);
         try result_table.put(result_table_id, vm, try vm.atomValue("mode"), Value.new.num(runningStats.mode()));
+        try result_table.put(result_table_id, vm, try vm.atomValue("geomean"), Value.new.num(runningStats.geomean()));
         try result_table.put(result_table_id, vm, try vm.atomValue("stdev"), Value.new.num(runningStats.standardDeviation()));
         try result_table.put(result_table_id, vm, try vm.atomValue("sample_stdev"), Value.new.num(runningStats.standardDeviationS()));
         try result_table.put(result_table_id, vm, try vm.atomValue("variance"), Value.new.num(runningStats.variance()));
@@ -558,6 +532,18 @@ pub const Impl = struct {
         try result_table.put(result_table_id, vm, try vm.atomValue("sample_skewness"), Value.new.num(runningStats.skewnessS()));
         try result_table.put(result_table_id, vm, try vm.atomValue("kurtosis"), Value.new.num(runningStats.kurtosis()));
         try result_table.put(result_table_id, vm, try vm.atomValue("sample_kurtosis"), Value.new.num(runningStats.kurtosisS()));
+
+        // Encode the internal accumulator values so we can continue accumulating if necessary
+        try result_table.put(result_table_id, vm, try vm.atomValue("minimum"), Value.new.num(runningStats.min));
+        try result_table.put(result_table_id, vm, try vm.atomValue("maximum"), Value.new.num(runningStats.max));
+        try result_table.put(result_table_id, vm, try vm.atomValue("sum"), Value.new.num(runningStats.sum));
+        try result_table.put(result_table_id, vm, try vm.atomValue("sum_of_squares"), Value.new.num(runningStats.ssq));
+        try result_table.put(result_table_id, vm, try vm.atomValue("product"), Value.new.num(runningStats.prd));
+        try result_table.put(result_table_id, vm, try vm.atomValue("moment_1"), Value.new.num(runningStats.mom1));
+        // try result_table.put(result_table_id, vm, try vm.atomValue("moment_1_compensation"), Value.new.num(runningStats.mom1_comp));
+        try result_table.put(result_table_id, vm, try vm.atomValue("moment_2"), Value.new.num(runningStats.mom2));
+        try result_table.put(result_table_id, vm, try vm.atomValue("moment_3"), Value.new.num(runningStats.mom3));
+        try result_table.put(result_table_id, vm, try vm.atomValue("moment_4"), Value.new.num(runningStats.mom4));
 
         return .data(Value.new.table(result_table_id));
     }
@@ -585,36 +571,6 @@ pub const Impl = struct {
         return .data(Value.new.num(compute(&runningRegress)));
     }
 
-    // stats.slope(table, table) -> num
-    // Slope of the regression of the data.
-    pub fn slope(vm: *VM, table_1_id: Args.table, table_2_id: Args.table) !HostResult {
-        return numRegress(vm, table_1_id, table_2_id, RunningRegress.slope);
-    }
-
-    // stats.intercept(table, table) -> num
-    // Intercept of the regression of the data.
-    pub fn intercept(vm: *VM, table_1_id: Args.table, table_2_id: Args.table) !HostResult {
-        return numRegress(vm, table_1_id, table_2_id, RunningRegress.intercept);
-    }
-
-    // stats.correlation(table, table) -> num
-    // Correlation coefficient of the data.
-    pub fn correlation(vm: *VM, table_1_id: Args.table, table_2_id: Args.table) !HostResult {
-        return numRegress(vm, table_1_id, table_2_id, RunningRegress.correlation);
-    }
-
-    // stats.covariance(table, table) -> num
-    // Population covariance of the data.
-    pub fn covariance(vm: *VM, table_1_id: Args.table, table_2_id: Args.table) !HostResult {
-        return numRegress(vm, table_1_id, table_2_id, RunningRegress.covariance);
-    }
-
-    // stats.sample_covariance(table, table) -> num
-    // Sample covariance of the data.
-    pub fn sample_covariance(vm: *VM, table_1_id: Args.table, table_2_id: Args.table) !HostResult {
-        return numRegress(vm, table_1_id, table_2_id, RunningRegress.sample_covariance);
-    }
-
     // stats.regression(table) -> table
     // table of all regression statistics of the input data
     pub fn regression(vm: *VM, table_1_id: Args.table, table_2_id: Args.table) !HostResult {
@@ -639,31 +595,31 @@ pub const Impl = struct {
 pub const impls: []const specs.Impl = root.host.impls(Impl).val;
 
 test "stats methods" {
-    try testing.topTrue("{1, 1, 1, 2, 3, 3} |> stats.frequencies() == {1=3, 2=1, 3=2}");
+    try testing.topTrue("{1, 1, 1, 2, 3, 3} |> stats.statistics(_).frequencies == {1=3, 2=1, 3=2}");
     try testing.topTrue("{\"hello\", \"world\", \"how say\", \"hello\",} |> stats.frequencies() == {\"hello\"=2, \"world\"=1, \"how say\"=1}");
-    try testing.topTrue("{1, 1, 1, 2, 3} |> stats.mean() == 1.6");
-    try testing.topTrue("{54, 24, 36} |> stats.geomean() == 36");
-    try testing.topTrue("{3, 1, 2, 1, 1} |> stats.median() == 1");
-    try testing.topTrue("{3, 1, 2, 1, 3, 1} |> stats.median() == 1.5");
-    try testing.topTrue("{3, 1, 2, 1, 3, 1} |> stats.mode() == 1");
+    try testing.topTrue("{1, 1, 1, 2, 3} |> stats.statistics(_).mean == 1.6");
+    try testing.topTrue("{54, 24, 36} |> stats.statistics(_).geomean == 36");
+    try testing.topTrue("{3, 1, 2, 1, 1} |> stats.statistics(_).median == 1");
+    try testing.topTrue("{3, 1, 2, 1, 3, 1} |> stats.statistics(_).median == 1.5");
+    try testing.topTrue("{3, 1, 2, 1, 3, 1} |> stats.statistics(_).mode == 1");
     try testing.topTrue("{\"hello\", \"world\", \"how say\", \"hello\",} |> stats.mode() == \"hello\"");
-    try testing.topTrue("{1, 1, 2, 2} |> stats.mode() == 1");
-    try testing.topTrue("{1.0, 2.0, 1.0, 4.0, 1.0, 4.0, 1.0, 2.0} |> stats.mean() == 2.0");
-    try testing.topTrue("{1.5, 2.5, 2.5, 2.75, 3.25, 4.75} |> stats.stdev() == 0.986893273527251");
-    try testing.topTrue("{1.5, 2.5, 2.5, 2.75, 3.25, 4.75} |> stats.sample_stdev() == 1.0810874155219827");
-    try testing.topTrue("{1.0, 2.0, 1.0, 4.0, 1.0, 4.0, 1.0, 2.0} |> stats.variance() |> math.close?(1.5, 6)");
-    try testing.topTrue("{1.0, 2.0, 1.0, 4.0, 1.0, 4.0, 1.0, 2.0} |> stats.sample_variance() |> math.close?(1.714285714285715, 15)");
+    try testing.topTrue("{1, 1, 2, 2} |> stats.statistics(_).mode == 1");
+    try testing.topTrue("{1.0, 2.0, 1.0, 4.0, 1.0, 4.0, 1.0, 2.0} |> stats.statistics(_).mean == 2.0");
+    try testing.topTrue("{1.5, 2.5, 2.5, 2.75, 3.25, 4.75} |> stats.statistics(_).stdev == 0.986893273527251");
+    try testing.topTrue("{1.5, 2.5, 2.5, 2.75, 3.25, 4.75} |> stats.statistics(_).sample_stdev == 1.0810874155219827");
+    try testing.topTrue("{1.0, 2.0, 1.0, 4.0, 1.0, 4.0, 1.0, 2.0} |> stats.statistics(_).variance |> math.close?(1.5, 6)");
+    try testing.topTrue("{1.0, 2.0, 1.0, 4.0, 1.0, 4.0, 1.0, 2.0} |> stats.statistics(_).sample_variance |> math.close?(1.714285714285715, 15)");
     // Skewness result in revo current impl: 0.8164965809277258
-    try testing.topTrue("{1.0, 2.0, 1.0, 4.0, 1.0, 4.0, 1.0, 2.0} |> stats.skewness() |> math.close?(0.8164965809277261, 14)");
-    try testing.topTrue("{1.0, 2.0, 1.0, 4.0, 1.0, 4.0, 1.0, 2.0} |> stats.sample_skewness() |> math.close?(1.018350154434631, 15)");
-    try testing.topTrue("{1.0, 2.0, 1.0, 4.0, 1.0, 4.0, 1.0, 2.0} |> stats.kurtosis() |> math.close?(-1.0, 1)");
+    try testing.topTrue("{1.0, 2.0, 1.0, 4.0, 1.0, 4.0, 1.0, 2.0} |> stats.statistics(_).skewness |> math.close?(0.8164965809277261, 14)");
+    try testing.topTrue("{1.0, 2.0, 1.0, 4.0, 1.0, 4.0, 1.0, 2.0} |> stats.statistics(_).sample_skewness |> math.close?(1.018350154434631, 15)");
+    try testing.topTrue("{1.0, 2.0, 1.0, 4.0, 1.0, 4.0, 1.0, 2.0} |> stats.statistics(_).kurtosis |> math.close?(-1.0, 1)");
     // Sample kurtosis result in revo current impl: -0.6999999999999984
-    try testing.topTrue("{1.0, 2.0, 1.0, 4.0, 1.0, 4.0, 1.0, 2.0} |> stats.sample_kurtosis() |> math.close?(-0.7000000000000008, 14)");
-    try testing.topTrue("stats.slope({1, 2, 3, 4, 5}, {2, 3, 5, 4, 6}) |> math.close?(0.9, 1)");
-    try testing.topTrue("stats.intercept({1, 2, 3, 4, 5}, {2, 3, 5, 4, 6}) |> math.close?(1.3, 1)");
-    try testing.topTrue("stats.correlation({1, 2, 3, 4, 5}, {2, 3, 5, 4, 6}) |> math.close?(0.9, 1)");
-    try testing.topTrue("stats.covariance({1, 2, 3, 4, 5}, {2, 3, 5, 4, 6}) |> math.close?(1.8, 1)");
-    try testing.topTrue("stats.sample_covariance({1, 2, 3, 4, 5}, {2, 3, 5, 4, 6}) |> math.close?(2.25, 1)");
+    try testing.topTrue("{1.0, 2.0, 1.0, 4.0, 1.0, 4.0, 1.0, 2.0} |> stats.statistics(_).sample_kurtosis |> math.close?(-0.7000000000000008, 14)");
+    try testing.topTrue("stats.regression({1, 2, 3, 4, 5}, {2, 3, 5, 4, 6}).slope |> math.close?(0.9, 1)");
+    try testing.topTrue("stats.regression({1, 2, 3, 4, 5}, {2, 3, 5, 4, 6}).intercept |> math.close?(1.3, 1)");
+    try testing.topTrue("stats.regression({1, 2, 3, 4, 5}, {2, 3, 5, 4, 6}).correlation |> math.close?(0.9, 1)");
+    try testing.topTrue("stats.regression({1, 2, 3, 4, 5}, {2, 3, 5, 4, 6}).covariance |> math.close?(1.8, 1)");
+    try testing.topTrue("stats.regression({1, 2, 3, 4, 5}, {2, 3, 5, 4, 6}).sample_covariance |> math.close?(2.25, 1)");
 }
 
 // harmonic_mean(data, weights=None)

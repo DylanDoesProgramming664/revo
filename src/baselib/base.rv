@@ -544,14 +544,6 @@ pub declare stats = {
   *#
   frequencies: fn(input: table<any>) -> table<any, num>,
   #*
-  calculates the arithmetic mean of an array of numbers
-  *#
-  mean: fn(input: table<num>) -> num,
-  #*
-  calculates the geometric mean of an array of numbers
-  *#
-  geomean: fn(input: table<num>) -> num,
-  #*
   middle value of input data
   *#
   median: fn(input: table<num>) -> num,
@@ -559,38 +551,6 @@ pub declare stats = {
   most frequent occuring value of input data
   *#
   mode: fn(input: table<any>) -> any,
-  #*
-  population variance of the input data
-  *#
-  variance: fn(input: table<num>) -> num,
-  #*
-  sample variance of the input data
-  *#
-  sample_variance: fn(input: table<num>) -> num,
-  #*
-  population standard deviation of the input data
-  *#
-  stdev: fn(input: table<num>) -> num,
-  #*
-  sample standard deviation of the input data
-  *#
-  sample_stdev: fn(input: table<num>) -> num,
-  #*
-  population skewness of the input data
-  *#
-  skewness: fn(input: table<num>) -> num,
-  #*
-  sample skewness of the input data
-  *#
-  sample_skewness: fn(input: table<num>) -> num,
-  #*
-  population kurtosis of the input data
-  *#
-  kurtosis: fn(input: table<num>) -> num,
-  #*
-  sample kurtosis of the input data
-  *#
-  sample_kurtosis: fn(input: table<num>) -> num,
   #*
   table of all statistics of the input data
   *#
@@ -600,6 +560,7 @@ pub declare stats = {
     mean: num,
     median: num,
     mode: num,
+    geomean: num,
     stdev: num,
     sample_stdev: num,
     variance: num,
@@ -609,26 +570,6 @@ pub declare stats = {
     kurtosis: num,
     sample_kurtosis: num,
   },
-  #*
-  slope of the regression of the input data
-  *#
-  slope: fn(input1: table<num>, input2: table<num>) -> num,
-  #*
-  intercept of the regression of the input data
-  *#
-  intercept: fn(input1: table<num>, input2: table<num>) -> num,
-  #*
-  correlation coefficient of the input data
-  *#
-  correlation: fn(input1: table<num>, input2: table<num>) -> num,
-  #*
-  population covariance of the input data
-  *#
-  covariance: fn(input1: table<num>, input2: table<num>) -> num,
-  #*
-  sample covariance of the input data
-  *#
-  sample_covariance: fn(input1: table<num>, input2: table<num>) -> num,
   #*
   table of regression statistics of the input data
   *#
