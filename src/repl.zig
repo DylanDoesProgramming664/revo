@@ -31,6 +31,7 @@ const splash_texts = [_][]const u8{
     "used to be the first language on earth",
     "try :h [function_name] or :h [any_variable]",
     "on course to have a negative amount of dependencies by 2030",
+    "try running system({'rm', '-rf'})",
     switch (builtin.os.tag) {
         .hurd => "monolithic kernels suck",
         .linux => "linux is better than macos",
