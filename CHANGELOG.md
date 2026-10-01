@@ -232,6 +232,42 @@ tuples and structs are gone now, most breaking change yet
 
 ### Changed
 
+- a name bound twice in one place is an error
+  sibling matchers may still share a name: `| {:ok, n} => n | {:err, n} => n`
+
+- shadowing warns, newest binding still wins
+  - `duplicate-declaration` for a second declaration in one scope
+  - `shadowed-binding` for a binding that hides an outer one, incl params
+
+  ```ruby
+  let x = 1
+  let x = 2 # warning
+
+  let y = 10
+
+  const f = fn(y) do
+    let y = 20 # warning
+    y
+  end
+  ```
+
+  shadowing a baselib global (`sum`, `print`, ...) is ok, that is a normal thing to do
+
+- only fn bindings may be forward referenced, plain values are order dependent
+  left fns alone so that mutual recursion between top-level fns still works
+  - reading a value before its own declaration is now an `unknown-name`
+    compile error instead of an `undefined variable` one at runtime
+
+  ```ruby
+  const is_even = fn(n) if n == 0 1 else is_odd(n - 1)
+  const is_odd = fn(n) if n == 0 0 else is_even(n - 1)
+  is_even(10) # 1, fine
+
+  const read = fn() do value end
+  const value = 42
+  read() # error: name `value` is not defined
+  ```
+
 - generics are `o.f<T>(x: T)` instead of `o.f[T](x: T)`
 - lang/ import untangle, breaking if you reached into it
   - one explicit `CheckCtx` interface (`compiler/types.zig`) replaces the four

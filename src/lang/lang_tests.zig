@@ -1394,6 +1394,17 @@ test "semantic catches undefined variable" {
 test "semantic catches undefined function call" {
     try t.expectSemanticError("pritn(\"hi\")");
 }
+
+test "forward reference to a value is rejected at compile time" {
+    try t.expectErrorCode(
+        \\ const read = fn() do
+        \\     value
+        \\ end
+        \\ const value = 42
+        \\ read()
+    , "unknown-name");
+}
+
 test "runtime report includes not-a-function detail" {
     try t.expectRuntimeFailure(
         "1(2)",
@@ -2054,6 +2065,56 @@ test "local binding shadows outer binding" {
         \\ end
         \\ f()
     , 20);
+    try t.expectWarningCode(
+        \\ let x = 10
+        \\ const f = fn() do
+        \\     let x = 20
+        \\     x
+        \\ end
+        \\ f()
+    , "shadowed-binding");
+}
+
+test "redeclaration in one scope warns" {
+    // newest still wins at runtime
+    try t.topNumber(
+        \\ let x = 1
+        \\ let x = 2
+        \\ x
+    , 2);
+
+    try t.expectWarningCode(
+        \\ let x = 1
+        \\ let x = 2
+        \\ x
+    , "duplicate-declaration");
+}
+
+test "shadow warnings" {
+    // a binding landing on a param it hides
+    try t.expectWarningCode(
+        \\ const f = fn(x) do
+        \\   let x = 5
+        \\   x
+        \\ end
+        \\
+        \\ f(1)
+    , "shadowed-binding");
+
+    // shadowing a baselib global is ok
+    try t.expectNoWarning(
+        \\ const sum = fn(a, b) do
+        \\   a + b
+        \\ end
+        \\ sum(1, 2)
+    );
+
+    // reassignment is not redeclaration
+    try t.expectNoWarning(
+        \\ let x = 1
+        \\ x = 2
+        \\ x
+    );
 }
 
 test "assignment resolves to nearest binding" {
@@ -4990,6 +5051,44 @@ test "declare rejects duplicate names" {
         \\ declare MAX_ITEMS = num
         \\ declare MAX_ITEMS = num
     );
+}
+
+test "duplicate parameter is an error" {
+    try t.expectErrorCode(
+        \\ const f = fn(x, x) do x end
+        \\ f(1, 2)
+    , "duplicate-parameter");
+    // the fn shorthand goes through the same param loop
+    try t.expectErrorCode(
+        \\ fn g(a, a) a
+        \\ g(1, 2)
+    , "duplicate-parameter");
+    try t.expectNoWarning(
+        \\ const f = fn(_, _) do 1 end
+        \\ f(1, 2)
+    );
+}
+
+test "duplicate name in one pattern is an error" {
+    try t.expectErrorCode(
+        \\ let {a, a} = {1, 2}
+        \\ a
+    , "duplicate-pattern-name");
+    try t.expectErrorCode(
+        \\ let v = {x = 1}
+        \\ match v
+        \\ | {x, x} => x
+    , "duplicate-pattern-name");
+}
+
+test "one name bound by sibling matchers is fine" {
+    // per-matcher binds, the arm body sees the union, so the same name
+    // across matchers is the point and not a duplicate
+    try t.topNumber(
+        \\ match {:ok, 4}
+        \\ | {:ok, n} => n
+        \\ | {:err, n} => n
+    , 4);
 }
 
 test "declare rejects non-top-level placement" {
