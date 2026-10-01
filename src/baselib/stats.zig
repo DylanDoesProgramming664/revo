@@ -98,7 +98,7 @@ const RunningStats = struct {
             self.imode_count = this_count;
             self.imode = x;
         }
-        
+
         const nf = self.n_float();
         
         // 1. Calculate deltas
@@ -524,6 +524,11 @@ pub const Impl = struct {
         try result_table.put(result_table_id, vm, try vm.atomValue("median"), (try median(vm, table_id)).ok);
         try result_table.put(result_table_id, vm, try vm.atomValue("mode"), Value.new.num(runningStats.mode()));
         try result_table.put(result_table_id, vm, try vm.atomValue("geomean"), Value.new.num(runningStats.geomean()));
+        try result_table.put(result_table_id, vm, try vm.atomValue("minimum"), Value.new.num(runningStats.min));
+        try result_table.put(result_table_id, vm, try vm.atomValue("maximum"), Value.new.num(runningStats.max));
+        try result_table.put(result_table_id, vm, try vm.atomValue("sum"), Value.new.num(runningStats.sum));
+        try result_table.put(result_table_id, vm, try vm.atomValue("sum_of_squares"), Value.new.num(runningStats.ssq));
+        try result_table.put(result_table_id, vm, try vm.atomValue("product"), Value.new.num(runningStats.prd));
         try result_table.put(result_table_id, vm, try vm.atomValue("stdev"), Value.new.num(runningStats.standardDeviation()));
         try result_table.put(result_table_id, vm, try vm.atomValue("sample_stdev"), Value.new.num(runningStats.standardDeviationS()));
         try result_table.put(result_table_id, vm, try vm.atomValue("variance"), Value.new.num(runningStats.variance()));
@@ -534,16 +539,14 @@ pub const Impl = struct {
         try result_table.put(result_table_id, vm, try vm.atomValue("sample_kurtosis"), Value.new.num(runningStats.kurtosisS()));
 
         // Encode the internal accumulator values so we can continue accumulating if necessary
-        try result_table.put(result_table_id, vm, try vm.atomValue("minimum"), Value.new.num(runningStats.min));
-        try result_table.put(result_table_id, vm, try vm.atomValue("maximum"), Value.new.num(runningStats.max));
-        try result_table.put(result_table_id, vm, try vm.atomValue("sum"), Value.new.num(runningStats.sum));
-        try result_table.put(result_table_id, vm, try vm.atomValue("sum_of_squares"), Value.new.num(runningStats.ssq));
-        try result_table.put(result_table_id, vm, try vm.atomValue("product"), Value.new.num(runningStats.prd));
-        try result_table.put(result_table_id, vm, try vm.atomValue("moment_1"), Value.new.num(runningStats.mom1));
-        // try result_table.put(result_table_id, vm, try vm.atomValue("moment_1_compensation"), Value.new.num(runningStats.mom1_comp));
-        try result_table.put(result_table_id, vm, try vm.atomValue("moment_2"), Value.new.num(runningStats.mom2));
-        try result_table.put(result_table_id, vm, try vm.atomValue("moment_3"), Value.new.num(runningStats.mom3));
-        try result_table.put(result_table_id, vm, try vm.atomValue("moment_4"), Value.new.num(runningStats.mom4));
+        // try result_table.put(result_table_id, vm, try vm.atomValue("moment_1"), Value.new.num(runningStats.mom1));
+        // try result_table.put(result_table_id, vm, try vm.atomValue("moment_2"), Value.new.num(runningStats.mom2));
+        // try result_table.put(result_table_id, vm, try vm.atomValue("moment_3"), Value.new.num(runningStats.mom3));
+        // try result_table.put(result_table_id, vm, try vm.atomValue("moment_4"), Value.new.num(runningStats.mom4));
+        // try result_table.put(result_table_id, vm, try vm.atomValue("moment_1_compensation"), Value.new.num(runningStats.cmp1));
+        // try result_table.put(result_table_id, vm, try vm.atomValue("moment_2_compensation"), Value.new.num(runningStats.cmp2));
+        // try result_table.put(result_table_id, vm, try vm.atomValue("moment_3_compensation"), Value.new.num(runningStats.cmp3));
+        // try result_table.put(result_table_id, vm, try vm.atomValue("moment_4_compensation"), Value.new.num(runningStats.cmp4));
 
         return .data(Value.new.table(result_table_id));
     }
