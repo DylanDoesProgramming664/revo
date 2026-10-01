@@ -278,7 +278,7 @@ const SemanticChecker = struct {
                     if (!std.mem.eql(u8, s.name, name)) continue;
                     if (s.head.kind == .global) break :find_global s;
                 };
-                break :find_global revo.baselib.specs.findFn(name);
+                break :find_global null;
             } orelse continue;
             if (try checker.makeStdlibSig(spec)) |sig| {
                 try checker.scopes.items[checker.scopes.items.len - 1].values.put(name, .{ .info = .{ .tag = .{ .function = sig } } });

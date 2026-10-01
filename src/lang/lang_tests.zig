@@ -4926,6 +4926,14 @@ test "baselib sigs: module field calls resolve to spec sigs" {
     try t.topTrue("let b: bool = fs.exists?(\"/tmp\")");
 }
 
+test "baselib sigs: a module table is its own self" {
+    try t.topNumber("table.alen(table)", 0);
+
+    try t.topAtom("table.klen(table) == table.len(table)", "true");
+    try t.topAtom("table:klen() == table.len(table)", "true");
+    try t.topAtom("table.len(table) > 0 and table.alen(table) == 0", "true");
+}
+
 test "baselib sigs: module result flows through match" {
     try t.topAtom(
         \\ let r = fs.open("/definitely/not/a/real/path_xyz")
