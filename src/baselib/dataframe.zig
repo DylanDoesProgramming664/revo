@@ -126,7 +126,7 @@ pub const Impl = struct {
         };
         const result_table = try vm.tables.get(result_table_id);
         // Add the new column table to it with the new key
-        try result_table.put(result_table_id, vm, Value.new.str(new_col_name), Value.new.table(new_col_table_id));
+        try result_table.put(result_table_id, vm, Value.new.str(@intFromEnum(new_col_name)), Value.new.table(new_col_table_id));
         // Return the resulting table
         return HostResult.data(Value.new.table(result_table_id));
     }
@@ -137,7 +137,6 @@ pub const impls: []const specs.Impl = root.host.impls(Impl).val;
 // frame.rename(Frame) -> Dataframe
 // frame.arrange(Frame) -> Dataframe
 // frame.unique(Frame) -> Dataframe
-// frame.map(Frame) -> Dataframe
 // frame.filter(Frame) -> Dataframe
 // frame.summarize(Frame) -> Dataframe
 // frame.group_by(Frame) -> Dataframe
@@ -148,4 +147,5 @@ pub const impls: []const specs.Impl = root.host.impls(Impl).val;
 test "frame functions and methods" {
     try testing.topTrue("{\"foos\" = {1, 2, 3}, \"bars\" = {4, 5, 6}, \"bazzes\" = {7, 8, 9}} |> dataframe.select({\"foos\", \"bazzes\"}) == {\"foos\" = {1, 2, 3}, \"bazzes\" = {7, 8, 9}}");
     try testing.topTrue("{\"foos\" = {1, 2, 3}, \"bars\" = {4, 5, 6}, \"bazzes\" = {7, 8, 9}} |> dataframe.len() == 3");
+    try testing.topTrue("dataframe.map({\"foos\" = {1, 2, 3}, \"bars\" = {4, 5, 6}}, \"bazzes\", fn (row) row[\"foos\"] * row[\"bars\"]) == {\"foos\" = {1, 2, 3}, \"bars\" = {4, 5, 6}, \"bazzes\" = {4, 10, 18}}");
 }
