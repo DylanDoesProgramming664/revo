@@ -357,9 +357,17 @@ pub declare dataframe = {
   #type Dataframe = table<string, table<any>>
   
   #*
+  returns the length of the dataframe, ensuring column lengths are equal
+  *#
+  len: fn(input: table<string, table<any>>) -> num,
+  #*
   selects only the given columns for a new dataframe, in the input order
   *#
   select: fn(input: table<string, table<any>>, columns: table<string>) -> table<string, table<any>>,
+  #*
+  maps a function over the rows of the dataframe to a new column with the given column name; each row in the passed function is a small table where column keys map to the row values
+  *#
+  map: fn(input: table<string, table<any>>, new_col: string, fn: function) -> table<string, table<any>>,
 }
 
 
