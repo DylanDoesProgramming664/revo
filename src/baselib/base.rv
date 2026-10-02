@@ -357,6 +357,10 @@ pub declare dataframe = {
   #type Dataframe = table<string, table<any>>
   
   #*
+  returns the length of the dataframe, ensuring column lengths are equal
+  *#
+  len: fn(input: table<string, table<any>>) -> num,
+  #*
   selects only the given columns for a new dataframe, in the input order
   *#
   select: fn(input: table<string, table<any>>, columns: table<string>) -> table<string, table<any>>,
