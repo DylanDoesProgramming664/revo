@@ -38,6 +38,8 @@ fn swapFiberAndRun(
     vm.import_dir = import_dir;
     defer vm.import_dir = prev_import_dir;
 
+    vm.closeUpvalueList(vm.currentFiber(), 0) catch {};
+
     var fiber = try revo.VM.Fiber.init(vm.runtime.alloc, vm.currentFiber().id, program, revo.VM.INIT_REG_COUNT);
     fiber.debug_info_id = vm.pending_debug_info_id;
 
