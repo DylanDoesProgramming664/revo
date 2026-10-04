@@ -192,15 +192,21 @@ pub const Value = extern struct {
         return self.bits;
     }
 
-    pub fn write(self: Value, writer: *std.Io.Writer, v: *VM, mode: PrintMode) anyerror!void {
-        return print_mod.writeValue(self, writer, v, mode);
+    pub fn write(
+        self: Value,
+        writer: *std.Io.Writer,
+        v: *VM,
+        mode: PrintMode,
+        host_color: bool,
+    ) anyerror!void {
+        return print_mod.writeValue(self, writer, v, mode, host_color);
     }
 
     // -- [misc] --------------------------------------------------------------
     pub fn print(self: Value, vm: *VM) void {
         var buf: [16]u8 = undefined;
         var stdout = vm.runtime.stdout.writer(vm.runtime.io, &buf);
-        self.write(&stdout.interface, vm, .debug) catch {
+        self.write(&stdout.interface, vm, .debug, vm.runtime.supports_color) catch {
             std.debug.print("<print-error>", .{});
             return;
         };

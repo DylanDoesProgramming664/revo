@@ -1,4 +1,4 @@
-//! also see ./raylib.d.rv
+//! zig side of the raylib extension; callers ascribe what they use
 
 const revo = @import("revo");
 const rl = @import("raylib");

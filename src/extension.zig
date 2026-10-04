@@ -20,7 +20,7 @@
 //! pub export const revo_native_bindings_ex = extension.bindingsFor(Impl);
 //! ```
 //!
-//! args here are runtime, full comptime type information is still .d.rv
+//! args here are runtime-checked; callers ascribe compile-time types
 //!
 
 const std = @import("std");

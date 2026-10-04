@@ -2,12 +2,12 @@
   build first:
   zig build && cp zig-out/lib/libzrevo.* ./zrevo.so
   then: revo ./extension.rv
+
+  the shapes live in zrevo.rv, the values come from zrevo.so
 ##
 
-import 'zrevo.so'
+const zrevo = import "./zrevo.rv"
 
-# the sibling zrevo.d.rv is the interface: every call is typed against it,
-# and all bindings land in this module's table
 print("zadd:", zrevo.zadd(3, 4))
 print("zecho:", zrevo.zecho("hello"))
 print("zconcat:", zrevo.zconcat({"a", "b", "c"}, "/"))

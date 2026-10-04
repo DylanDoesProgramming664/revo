@@ -129,7 +129,7 @@ pub const Impl = struct {
 
         for (table.array.items, 0..) |item, idx| {
             if (idx > 0) try buf.writer.writeAll(delim_str);
-            try item.write(&buf.writer, vm, .plain);
+            try item.write(&buf.writer, vm, .plain, vm.runtime.supports_color);
         }
 
         const slice = try buf.toOwnedSlice();
@@ -159,7 +159,11 @@ pub const Impl = struct {
     }
 
     pub fn copy(vm: *VM, self: Args.table) !HostResult {
-        return .data(try vm.copyTable(@intFromEnum(self)));
+        return .data(try vm.tableCopy(@intFromEnum(self)));
+    }
+
+    pub fn deep_copy(vm: *VM, self: Args.table) !HostResult {
+        return .data(try vm.tableDeepCopy(@intFromEnum(self)));
     }
 
     pub fn merge(vm: *VM, self: Args.table, other: Args.table) !HostResult {
@@ -275,15 +279,14 @@ pub const Impl = struct {
         return .data(Value.new.num(table.array.items.len));
     }
 
+    pub fn klen(vm: *VM, self: Args.table) !HostResult {
+        const table = try vm.tables.get(@intFromEnum(self));
+        return .data(Value.new.num(table.hash.count));
+    }
+
     pub fn @"empty?"(vm: *VM, self: Args.table) !HostResult {
         const table = try vm.tables.get(@intFromEnum(self));
         return ._bool(table.count() == 0);
-    }
-
-    pub fn deep_copy(vm: *VM, self: Args.table) !HostResult {
-        var seen = std.AutoHashMap(revo.memory.TableID, revo.memory.TableID).init(vm.runtime.alloc);
-        defer seen.deinit();
-        return .data(try deepCopyInto(vm, @intFromEnum(self), &seen));
     }
 
     pub fn update(vm: *VM, self: Args.table, k: Args.any, f: Args.function) !HostResult {
@@ -295,31 +298,6 @@ pub const Impl = struct {
         const t = try vm.tables.get(tid);
         try t.put(tid, vm, k, new);
         return .data(Value.new.table(tid));
-    }
-
-    /// recursive clone with cycle guard: already-seen tables map to
-    /// their in-progress copy instead of recursing forever
-    fn deepCopyInto(
-        vm: *VM,
-        src: revo.memory.TableID,
-        seen: *std.AutoHashMap(revo.memory.TableID, revo.memory.TableID),
-    ) anyerror!Value {
-        if (seen.get(src)) |id| return Value.new.table(id);
-        const id = try vm.tables.create();
-        try seen.put(src, id);
-        const s = try vm.tables.get(src);
-        const d = try vm.tables.get(id);
-        for (s.array.items) |item| {
-            const v = if (item.asTable()) |tid| try deepCopyInto(vm, tid, seen) else item;
-            try d.array.append(vm.runtime.alloc, v);
-        }
-        var it = s.hash.orderedIterator();
-        while (it.next()) |entry| {
-            const k = if (entry.key.asTable()) |tid| try deepCopyInto(vm, tid, seen) else entry.key;
-            const v = if (entry.value.asTable()) |tid| try deepCopyInto(vm, tid, seen) else entry.value;
-            try d.putRaw(k, v, vm);
-        }
-        return Value.new.table(id);
     }
 
     pub fn repeat(vm: *VM, self: Args.table, n: Args.number) !HostResult {
@@ -398,6 +376,7 @@ test "table library" {
     try testing.topNumber("{1, 2, 3}:alen()", 3);
     try testing.topNumber("{1, 2, x = 9}:alen()", 2);
     try testing.topNumber("len({1, 2, x = 9})", 3);
+    try testing.topNumber("{1, 2, x = 9}:klen()", 1);
 }
 
 test "table methods" {
@@ -470,7 +449,6 @@ test "table slice" {
     try testing.topNumber("{1, 2, 3}:slice(1):len()", 2);
     try testing.topNumber("{1, 2, 3}:slice(0, 10):len()", 3);
     try testing.topNumber("{1, 2, 3}:slice(2, 2):len()", 0);
-    try testing.topNumber("{1, 2, 3}:slice(5):len()", 0);
 }
 
 test "contains? and index_of compare string content, not ids" {

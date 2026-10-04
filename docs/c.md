@@ -571,9 +571,8 @@ bare `REVO_ERR_*` without a helper raises with a generic message
 {{< ref "pub fn revo_c_err_type(" >}}
 {{< ref "pub fn revo_c_err_other(" >}}
 
-each binding is just `name` and `fn_ptr`. the typed interface lives in a
-sibling `.d.rv` manifest, and every binding lands in the module table under
-the import's name
+each binding is just `name` and `fn_ptr`, and every binding lands flat in
+the module table under the import's name
 
 the last row is an all-null terminator
 
@@ -612,33 +611,32 @@ uint64_t id = revo_intern(vm, msg, 5);
 
 **loading from revo**
 
-module members come from the sibling manifest, so call the import directly
-and the calls are checked:
-
-```revo
-# extension.d.rv: the interface, plain revo
-pub declare add = fn(a: number, b: number) -> number
-pub declare concat = fn(parts: table, sep: string) -> string
-```
+imports are flat and untyped, so the `.so` is opaque to the compiler and
+nothing checks calls made straight into it:
 
 ```revo
 import "extension.so"
-extension.add 3, 4
-extension.concat ({"a", "b", "c"}, "-")   # typed from the manifest
+extension.add(3, 4)
+extension.add("x", 4) # no complaint, nothing knows the shape
 ```
 
-`import "extension.so"` finds `extension.d.rv` next to it by stem, types every
-call against the `pub declare`s, and loads every binding into the module table.
-the manifest is the whole description:
+put an `.rv` module next to the library that returns one ascribed table, and callers typecheck against it:
 
-manifests are real revo source, so there's no grammar ceiling: unions,
-nullables, error unions, varargs, and keyword names all work.
+```revo
+# extension.rv
+const extension: {
+  add: fn(a: number, b: number) -> number,
+  concat: fn(parts: table, sep: string) -> string,
+} = import "./extension.so"
 
-without a manifest the bindings still load into the module table, just untyped:
-the `.so` is opaque to the compiler, so nothing checks those calls
+extension
+```
 
-for scripts where a `.d.rv` shows up without a library, the import still
-typechecks but resolves to an empty table at runtime (edit-time only)
+```revo
+const extension = import "./extension.rv"
+extension.add(3, 4)          # ok
+extension.add("x", 4)        # compile error: arg 0 wants number
+```
 
 {{< ref "fn cload(" >}}
 

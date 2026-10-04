@@ -30,26 +30,22 @@ pub fn hover(
 
     const def_opt = try self.definition(alloc, id, pos, opts);
     if (def_opt == null) {
-        if (common.baselibSig(name)) |spec| {
-            var buf = std.Io.Writer.Allocating.init(alloc);
-            defer buf.deinit();
-            try buf.writer.writeAll("```revo\n");
-            try revo.baselib.specs.renderSignature(&buf.writer, spec.*);
-            try buf.writer.writeAll("\n```");
-            if (spec.doc.len > 0) {
-                try buf.writer.print("\n\n{s}", .{spec.doc});
+        // qualified baselib member (`math.floor`): resolve through the
+        // module first so duplicated names don't fall through to whichever
+        // module comes first (e.g. `number.floor`)
+        if (txt.moduleMemberAt(snap.text, pos)) |mod_name| {
+            if (revo.baselib.specs.isModule(mod_name)) {
+                var qbuf: [256]u8 = undefined;
+                const qualified = std.fmt.bufPrint(&qbuf, "{s}.{s}", .{ mod_name, name }) catch null;
+                if (qualified) |q| {
+                    if (revo.baselib.specs.findQualified(q)) |spec| {
+                        return try renderSpecHover(alloc, spec, snap.text, pos, name);
+                    }
+                }
             }
-            const text = try buf.toOwnedSlice();
-            return .{
-                .text = text,
-                .range = txt.wordRangeAt(snap.text, pos) orelse .{
-                    .start = pos,
-                    .end = .{
-                        .line = pos.line,
-                        .character = pos.character + @as(u32, @intCast(name.len)),
-                    },
-                },
-            };
+        }
+        if (common.baselibSig(name)) |spec| {
+            return try renderSpecHover(alloc, spec, snap.text, pos, name);
         }
         //
         // member off an imported module, `mod.member` shows its def
@@ -81,6 +77,39 @@ pub fn hover(
                     };
                 }
             }
+        }
+        // baselib module name (`math` in `math.floor`)
+        if (revo.baselib.specs.isModule(name)) {
+            var buf = std.Io.Writer.Allocating.init(alloc);
+            defer buf.deinit();
+            try buf.writer.print("module `{s}`", .{name});
+
+            const mod_doc = revo.baselib.specs.moduleDoc(name);
+            if (mod_doc.len > 0) try buf.writer.print("\n\n{s}", .{mod_doc});
+            try buf.writer.writeAll("\n\n```revo\n");
+
+            for (revo.baselib.specs.full_specs) |group| {
+                for (group) |*spec| {
+                    if (spec.is_type) continue;
+                    const ours = spec.head.kind == .namespaced and spec.head.module != null and
+                        std.mem.eql(u8, spec.head.module.?, name);
+                    if (!ours) continue;
+                    try revo.baselib.specs.renderSignature(&buf.writer, spec.*);
+                    try buf.writer.writeByte('\n');
+                }
+            }
+
+            try buf.writer.writeAll("```");
+            return .{
+                .text = try buf.toOwnedSlice(),
+                .range = txt.wordRangeAt(snap.text, pos) orelse .{
+                    .start = pos,
+                    .end = .{
+                        .line = pos.line,
+                        .character = pos.character + @as(u32, @intCast(name.len)),
+                    },
+                },
+            };
         }
         return null;
     }
@@ -269,9 +298,37 @@ pub fn renderDefinition(
     return renderDefinitionOpts(alloc, name, type_name, ws, file_id, .{});
 }
 
+/// hover card for one baselib spec: qualified sig plus doc, call-site range
+fn renderSpecHover(
+    alloc: std.mem.Allocator,
+    spec: *const revo.baselib.specs.FnSpec,
+    text: []const u8,
+    pos: Position,
+    name: []const u8,
+) !Hover {
+    var buf = std.Io.Writer.Allocating.init(alloc);
+    defer buf.deinit();
+    try buf.writer.writeAll("```revo\n");
+    try revo.baselib.specs.renderSignature(&buf.writer, spec.*);
+    try buf.writer.writeAll("\n```");
+    if (spec.doc.len > 0) {
+        try buf.writer.print("\n\n{s}", .{spec.doc});
+    }
+    return .{
+        .text = try buf.toOwnedSlice(),
+        .range = txt.wordRangeAt(text, pos) orelse .{
+            .start = pos,
+            .end = .{
+                .line = pos.line,
+                .character = pos.character + @as(u32, @intCast(name.len)),
+            },
+        },
+    };
+}
+
 /// same with your `opts`
 ///   keeps sig lookup from thrashing cache with defaults
-pub fn renderDefinitionOpts(
+fn renderDefinitionOpts(
     alloc: std.mem.Allocator,
     name: []const u8,
     type_name: []const u8,
@@ -317,59 +374,6 @@ test "workspace hover shows record field values" {
     try std.testing.expect(std.mem.find(u8, hov.?.text, "{name: string = \"me\"}") != null);
 }
 
-test "workspace hover over lib import manifest" {
-    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
-    defer arena.deinit();
-    const alloc = arena.allocator();
-    const query_opts: pipeline.BuildOptions = .{
-        .include_baselib_macros = false,
-        .install_debug_info = false,
-        .test_mode = true,
-    };
-
-    var tmp = std.testing.tmpDir(.{});
-    defer tmp.cleanup();
-    try tmp.dir.writeFile(std.testing.io, .{ .sub_path = "extension.so", .data = "" });
-    try tmp.dir.writeFile(std.testing.io, .{ .sub_path = "extension.d.rv", .data =
-        \\pub declare add = fn(a: number, b: number) -> number
-        \\pub declare concat = fn(parts: table, sep: string) -> string
-    });
-    var dir_buf: [std.Io.Dir.max_path_bytes]u8 = undefined;
-    const dir_n = try tmp.dir.realPath(std.testing.io, &dir_buf);
-    const dir_path = dir_buf[0..dir_n];
-
-    var vm = try revo.VM.init(.{ .alloc = alloc, .io = std.testing.io, .diag_alloc = alloc });
-    defer vm.deinit();
-    var ws = try Workspace.initWithVm(&vm, alloc);
-    defer ws.deinit();
-
-    const script = try std.fmt.allocPrint(alloc, "{s}/app.rv", .{dir_path});
-    defer alloc.free(script);
-    const id = try ws.open(script,
-        \\import "extension.so"
-        \\print(extension.concat({"a", "b"}, "-"))
-    , .{});
-
-    var hov = try ws.hover(alloc, id, .{ .line = 1, .character = 11 }, query_opts);
-    defer if (hov) |*h| h.deinit(alloc);
-    try std.testing.expect(hov != null);
-    try std.testing.expect(std.mem.find(u8, hov.?.text, "module `extension`") != null);
-    try std.testing.expect(std.mem.find(u8, hov.?.text, "concat") != null);
-    // range covers just the module name inside the import statement
-    try std.testing.expectEqual(@as(u32, 1), hov.?.range.start.line);
-    try std.testing.expectEqual(@as(u32, 9), hov.?.range.start.character);
-    try std.testing.expectEqual(@as(u32, 18), hov.?.range.end.character);
-
-    var hov2 = try ws.hover(alloc, id, .{ .line = 2, .character = 22 }, query_opts);
-    defer if (hov2) |*h| h.deinit(alloc);
-    try std.testing.expect(hov2 != null);
-    try std.testing.expect(std.mem.find(u8, hov2.?.text, "fn concat(parts: table, sep: string) -> string") != null);
-    // member def lives in the manifest; the range must be the call-site word
-    try std.testing.expectEqual(@as(u32, 2), hov2.?.range.start.line);
-    try std.testing.expectEqual(@as(u32, 17), hov2.?.range.start.character);
-    try std.testing.expectEqual(@as(u32, 23), hov2.?.range.end.character);
-}
-
 test "workspace hover over bare fn definition" {
     var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
     defer arena.deinit();
@@ -389,4 +393,52 @@ test "workspace hover over bare fn definition" {
     var hov = try ws.hover(alloc, id, .{ .line = 3, .character = 5 }, query_opts);
     defer if (hov) |*h| h.deinit(alloc);
     try std.testing.expect(hov != null);
+}
+
+test "workspace hover over baselib module name shows member card" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+    const query_opts: pipeline.BuildOptions = .{
+        .include_baselib_macros = false,
+        .install_debug_info = false,
+        .test_mode = true,
+    };
+
+    var vm = try revo.VM.init(.{ .alloc = alloc, .io = std.testing.io, .diag_alloc = alloc });
+    defer vm.deinit();
+    var ws = try Workspace.initWithVm(&vm, alloc);
+    defer ws.deinit();
+
+    const id = try ws.open("<test>", "print(math.floor(1.5))\n", .{});
+    var hov = try ws.hover(alloc, id, .{ .line = 1, .character = 8 }, query_opts);
+    defer if (hov) |*h| h.deinit(alloc);
+    try std.testing.expect(hov != null);
+    try std.testing.expect(std.mem.find(u8, hov.?.text, "module `math`") != null);
+    try std.testing.expect(std.mem.find(u8, hov.?.text, "numeric math") != null);
+    try std.testing.expect(std.mem.find(u8, hov.?.text, "math.floor(x: num) -> num") != null);
+}
+
+test "workspace hover over qualified member prefers its module" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+    const query_opts: pipeline.BuildOptions = .{
+        .include_baselib_macros = false,
+        .install_debug_info = false,
+        .test_mode = true,
+    };
+
+    var vm = try revo.VM.init(.{ .alloc = alloc, .io = std.testing.io, .diag_alloc = alloc });
+    defer vm.deinit();
+    var ws = try Workspace.initWithVm(&vm, alloc);
+    defer ws.deinit();
+
+    const id = try ws.open("<test>", "print(math.floor(1.5))\n", .{});
+    // `floor` exists in several modules; the `math.` qualifier must win
+    // over the unqualified first match (`number.floor`)
+    var hov = try ws.hover(alloc, id, .{ .line = 1, .character = 13 }, query_opts);
+    defer if (hov) |*h| h.deinit(alloc);
+    try std.testing.expect(hov != null);
+    try std.testing.expect(std.mem.find(u8, hov.?.text, "math.floor(x: num) -> num") != null);
 }

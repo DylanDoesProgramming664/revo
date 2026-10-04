@@ -129,6 +129,18 @@ const Parser = struct {
                 // qualified module type: `a.T` names alias T from module a
                 if (self.match(.dot)) {
                     const name_tok = try self.expect(.ident);
+                    // `a.b?` is optional, same sugar as `b?` on a bare name
+                    //   the lexer glues the `?` onto the ident, so strip it here
+                    if (std.mem.endsWith(u8, name_tok.text, "?")) {
+                        const named = try ast.allocTypeExpr(self.alloc, name_tok.span(), .{
+                            .qualified = .{ .module = tok.text, .name = name_tok.text[0 .. name_tok.text.len - 1] },
+                        });
+                        const nil_atom = try ast.allocTypeExpr(self.alloc, name_tok.span(), .{ .atom = ":nil" });
+                        const variants = try self.alloc.alloc(*ast.TypeExpr, 2);
+                        variants[0] = named;
+                        variants[1] = nil_atom;
+                        return try ast.allocTypeExpr(self.alloc, self.span(start), .{ .union_of = variants });
+                    }
                     return try ast.allocTypeExpr(self.alloc, self.span(start), .{
                         .qualified = .{ .module = tok.text, .name = name_tok.text },
                     });
@@ -177,6 +189,13 @@ const Parser = struct {
                 var pos_idx: u32 = 0;
 
                 while (!self.check(.rsquiggly) and !self.check(.eof)) {
+                    // `#* ... *#` before a field documents it (declare tables);
+                    // plain `#` comments are already skipped by peek
+                    var field_doc: ?[]const u8 = null;
+                    while (self.check(.doc_comment)) {
+                        const dt = self.advance();
+                        field_doc = std.mem.trim(u8, dt.text, " \t\n\r");
+                    }
                     // `name:` prefix means a named field, anything else is a
                     // positional array entry (`{ number, number }`); field
                     // names may be contextual kws (`type`, `end`)
@@ -194,16 +213,16 @@ const Parser = struct {
                         _ = self.advance();
                         const name_tok = try self.expect(.ident);
                         _ = try self.expect(.colon);
-                        try fields.append(self.alloc, .{ .name = name_tok.text, .type_expr = try self.parseExpr(), .optional = true });
+                        try fields.append(self.alloc, .{ .name = name_tok.text, .type_expr = try self.parseExpr(), .optional = true, .doc = field_doc });
                     } else if (is_named) {
                         self.pos.* += 1;
                         _ = try self.expect(.colon);
-                        try fields.append(self.alloc, .{ .name = cur.text, .type_expr = try self.parseExpr() });
+                        try fields.append(self.alloc, .{ .name = cur.text, .type_expr = try self.parseExpr(), .doc = field_doc });
                     } else {
                         const te = try self.parseExpr();
                         const idx_name = try std.fmt.allocPrint(self.alloc, "{d}", .{pos_idx});
                         pos_idx += 1;
-                        try fields.append(self.alloc, .{ .name = idx_name, .type_expr = te });
+                        try fields.append(self.alloc, .{ .name = idx_name, .type_expr = te, .doc = field_doc });
                     }
 
                     if (!self.match(.comma)) break;
@@ -375,6 +394,25 @@ pub fn formatTypeOpts(alloc: std.mem.Allocator, ti: TypeInfo, opts: PrintOptions
         return error.OutOfMemory;
     };
     return try buf.toOwnedSlice();
+}
+
+test "qualified optional type is a nilable union" {
+    // `a.b?` used to read as the name `b?`, so `a.b` never resolved
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+
+    const tokens = try Lexer.lexAt(alloc, "argparse.ResultMsg?", .{});
+    var pos: usize = 0;
+    const te = try parseTypeExpr(tokens, &pos, alloc);
+
+    try std.testing.expect(te.kind == .union_of);
+    const variants = te.kind.union_of;
+    try std.testing.expectEqual(@as(usize, 2), variants.len);
+    try std.testing.expect(variants[0].kind == .qualified);
+    try std.testing.expectEqualStrings("argparse", variants[0].kind.qualified.module);
+    try std.testing.expectEqualStrings("ResultMsg", variants[0].kind.qualified.name);
+    try std.testing.expectEqualStrings(":nil", variants[1].kind.atom);
 }
 
 test "type serde roundtrips" {

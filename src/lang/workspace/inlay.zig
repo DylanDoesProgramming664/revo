@@ -128,7 +128,7 @@ fn appendParamHints(
     id: FileId,
     text: []const u8,
 ) !void {
-    const parsed = Parser.parseSourceReport(alloc, text) catch return;
+    const parsed = Parser.parseSourceReport(alloc, text, .{}) catch return;
     const root = switch (parsed) {
         .ok => |r| r,
         .err => return,

@@ -232,17 +232,47 @@ const SigVisitor = struct {
             },
             .binding => |b| {
                 if (b.target.expr != .ident) return;
-                if (b.value.expr != .fn_expr) return;
-                const fn_expr = b.value.expr.fn_expr;
                 const name = b.target.expr.ident;
+                if (b.value.expr == .fn_expr) {
+                    const fn_expr = b.value.expr.fn_expr;
 
-                const params = self.paramInfos(fn_expr) orelse return;
+                    const params = self.paramInfos(fn_expr) orelse return;
 
+                    const name_owned = self.alloc.dupe(u8, name) catch return;
+                    self.sig_map.put(self.alloc, name_owned, .{
+                        .params = params,
+                        .return_type = null,
+                        .type_params_text = common.formatTypeParams(self.alloc, fn_expr.type_params) catch return,
+                    }) catch return;
+                    return;
+                }
+                // ascribed re-export:
+                // the value isn't a literal fn, so the sig comes from the annotation instead
+                const tn = b.type_name orelse return;
+                const ft_owned = self.ownedType(tn) orelse return;
+                var ft = ft_owned;
+
+                defer types.deinitType(&ft, self.alloc);
+                if (ft.tag != .function) return;
+
+                const fsig = ft.tag.function;
+                const params = self.alloc.alloc(ParamInfo, fsig.params.len) catch return;
+                errdefer self.alloc.free(params);
+
+                for (fsig.params, fsig.param_names, params, 0..) |pt, pn, *dst, i| {
+                    dst.* = .{
+                        .name = self.alloc.dupe(u8, pn) catch return,
+                        .type_name = types.clone(pt, self.alloc) catch return,
+                        .optional = i >= fsig.required_count,
+                    };
+                }
+
+                const return_type: ?types.TypeInfo = types.clone(fsig.return_type, self.alloc) catch null;
                 const name_owned = self.alloc.dupe(u8, name) catch return;
                 self.sig_map.put(self.alloc, name_owned, .{
                     .params = params,
-                    .return_type = null,
-                    .type_params_text = common.formatTypeParams(self.alloc, fn_expr.type_params) catch return,
+                    .return_type = return_type,
+                    .type_params_text = common.formatTypeParams(self.alloc, fsig.type_params) catch return,
                 }) catch return;
             },
             .assign_expr => |ae| {

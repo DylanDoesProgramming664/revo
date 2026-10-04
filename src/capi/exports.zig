@@ -84,6 +84,14 @@ pub export fn revo_table_alen(vm_ptr: *anyopaque, table: Value) callconv(.c) u64
     return @intCast(tbl.array.items.len);
 }
 
+/// keyed entries length, 0 for non-tables
+pub export fn revo_table_klen(vm_ptr: *anyopaque, table: Value) callconv(.c) u64 {
+    const v: *VM = @ptrCast(@alignCast(vm_ptr));
+    const tid = table.asTable() orelse return 0;
+    const tbl = v.tables.get(tid) catch return 0;
+    return @intCast(tbl.hash.count);
+}
+
 /// metatable-aware read; true and `out` set when present
 pub export fn revo_table_get(vm_ptr: *anyopaque, table: Value, key: Value, out: *Value) callconv(.c) bool {
     const v: *VM = @ptrCast(@alignCast(vm_ptr));
@@ -382,8 +390,7 @@ pub export fn revo_table_remove_finalizer(vm_ptr: *anyopaque, table: Value) call
     return true;
 }
 
-/// register a shared lib's revo_bindings into the module table; types come
-/// from the sibling `<stem>.d.rv` manifest (`extensionManifestFor`)
+/// register a shared lib's revo_bindings into the module table
 pub fn loadC(vm_ptr: *VM, lib_path: []const u8) ![]functions.CFunction {
     if (builtin.target.os.tag == .wasi or builtin.target.os.tag == .freestanding) {
         std.debug.print("error: dynamic library loading is not supported on this platform\n", .{});
@@ -445,8 +452,6 @@ const DynLib = if (builtin.target.os.tag == .windows) WinDynLib else std.DynLib;
 ///
 /// load a shared lib's `revo_bindings` as host functions
 ///
-/// the sister `<stem>.d.rv` manifest, when present,
-/// is validated against the table, drifts kill it and themselves
 pub fn loadHost(vm_ptr: *VM, lib_path: []const u8) ![]HostFunc {
     if (builtin.target.os.tag == .wasi or builtin.target.os.tag == .freestanding) {
         return error.OsNotSupported;
@@ -502,27 +507,6 @@ pub fn loadHost(vm_ptr: *VM, lib_path: []const u8) ![]HostFunc {
             .param_types = try pa.dupe(ParamType, decoded[0..count]),
             .func = @ptrCast(@alignCast(fn_ptr.?)),
         });
-    }
-
-    // no manifest means an untyped import
-    if (revo.extensionManifestFor(vm_ptr.runtime.io, vm_ptr.runtime.alloc, lib_path) catch null) |manifest| {
-        defer vm_ptr.runtime.alloc.free(manifest);
-
-        if (std.Io.Dir.cwd().readFileAlloc(
-            vm_ptr.runtime.io,
-            manifest,
-            vm_ptr.runtime.alloc,
-            std.Io.Limit.unlimited,
-        ) catch null) |src| {
-            defer vm_ptr.runtime.alloc.free(src);
-            const checklist = try vm_ptr.runtime.alloc.alloc(revo.baselib.specs.Impl, registered.items.len);
-            defer vm_ptr.runtime.alloc.free(checklist);
-
-            for (registered.items, 0..) |hf, k|
-                checklist[k] = .{ .name = hf.name, .f = hf };
-
-            try revo.baselib.specs.validateExtensionSpecs(vm_ptr.runtime.alloc, src, checklist);
-        }
     }
 
     try vm_ptr.loaded_extensions.append(vm_ptr.runtime.alloc, lib);

@@ -83,7 +83,7 @@ for x, i in data do print(i, x) end
 # iterator is still just a value
 
 let data2 = {10, 20, 30}
-let iter2 = iter.to_iter(data2)
+let iter2 = to_iter(data2)
 print(iter2())
 print(iter2())
 print(iter2())

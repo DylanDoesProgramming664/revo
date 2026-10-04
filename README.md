@@ -28,7 +28,9 @@ however, this project is rapidly changing. i recommend you build from source ins
 
 ## install from source
 
-you need [zig](https://ziglang.org/download) `0.16.0` to build revo. i also recommend the [anyzig](https://github.com/marler8997/anyzig) version manager
+you need [zig](https://ziglang.org/download) `0.16.0` to build revo
+
+i also recommend the [anyzig](https://github.com/marler8997/anyzig) version manager
 
 ### linux/bsd/mac/etc
 
@@ -46,7 +48,9 @@ revo
 
 #### nix
 
-this project has a flake which exposes revo as a package on `default`. you can open a shell with revo using `nix shell github:if-not-nil/revo?dir=extra/nix`. there is also a function that bundles a revo script into a nix package.
+this project has a flake which exposes revo as a package on `default`\
+you can open a shell with revo using `nix shell github:if-not-nil/revo?dir=extra/nix`\
+there is also a function that bundles a revo script into a nix package
 
 #### windows
 
@@ -100,7 +104,10 @@ revo
 ### made with revo
 
 - [hachem-wtf/revel](https://github.com/hachem-wtf/revel) -- a unix-like kernel
-- if you want to feature your project on the readme, you can submit a project via issues/discussion/email/discord
+- [hiccup.revo](https://github.com/0riginaln0/hiccup.revo) -- an html rendering library\
+- [rover](https://codeberg.org/doomy/rover) -- parser generators\
+
+- if you want your project in the readme, you can submit it via pr/issues/discussion/email/discord
 
 ### in c/zig/odin/what have you
 
@@ -116,4 +123,5 @@ there are two APIs for two ABIs:
 revo is licensed as [MIT](./LICENSE.txt)
 
 ~ [isocline](https://github.com/daanx/isocline) by daanx - MIT\
-~ [lsp-kit](https://github.com/zigtools/lsp-kit) by the zigtools team - MIT
+~ [lsp-kit](https://github.com/zigtools/lsp-kit) by the zigtools team - MIT\
+~ [glob](https://github.com/xcaeser/glob.zig/tree/master) by xcaeser - MIT

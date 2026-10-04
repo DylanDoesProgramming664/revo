@@ -48,7 +48,7 @@ fn compileChecked(vm: *revo.VM, source: []const u8) ![]revo.Instruction {
             break :blk bytecode.instructions;
         },
         .err => |lang_err| {
-            revo.printBuildError(alloc, .{ .text = source }, lang_err);
+            revo.printBuildError(alloc, .{ .text = source }, lang_err, vm.runtime.supports_color);
             vm.runtime.resetDiagArena();
             return error.LangFailure;
         },
@@ -60,7 +60,7 @@ fn runTopModuleChecked(vm: *revo.VM, source: []const u8, source_name: []const u8
     switch (result) {
         .ok => {},
         .err => |failure| {
-            revo.printRunError(alloc, source, failure);
+            revo.printRunError(alloc, source, failure, vm.runtime.supports_color);
             vm.runtime.resetDiagArena();
             return error.RuntimeFailure;
         },
@@ -68,6 +68,14 @@ fn runTopModuleChecked(vm: *revo.VM, source: []const u8, source_name: []const u8
 }
 
 pub fn topResult(source: []const u8, import_dir: ?[]const u8) !TopResult {
+    return topResultOpts(source, import_dir, .{});
+}
+
+pub fn topResultOpts(
+    source: []const u8,
+    import_dir: ?[]const u8,
+    opts: pipeline.BuildOptions,
+) !TopResult {
     var vm = try revo.VM.init(runtime());
     errdefer vm.deinit();
     const src_name: []const u8 = if (import_dir) |dir| blk: {
@@ -76,11 +84,37 @@ pub fn topResult(source: []const u8, import_dir: ?[]const u8) !TopResult {
         break :blk joined;
     } else "<source>";
     defer if (import_dir != null) alloc.free(src_name);
+    const built = try pipeline.build(&vm, .{ .name = src_name, .text = source }, opts);
+    switch (built) {
+        .ok => |bytecode| {
+            alloc.free(bytecode.instructions);
+            alloc.free(bytecode.spans);
+        },
+        .err => |lang_err| {
+            revo.printBuildError(alloc, .{ .name = src_name, .text = source }, lang_err, vm.runtime.supports_color);
+            vm.runtime.resetDiagArena();
+            return error.LangFailure;
+        },
+    }
     try runTopModuleChecked(&vm, source, src_name);
     return .{
         .vm = vm,
         .value = vm.mainResult(),
     };
+}
+
+pub fn topTrueOpts(opts: pipeline.BuildOptions, source: []const u8) !void {
+    try topTrueOptsInDir(null, opts, source);
+}
+
+pub fn topTrueOptsInDir(
+    import_dir: ?[]const u8,
+    opts: pipeline.BuildOptions,
+    source: []const u8,
+) !void {
+    var result = try topResultOpts(source, import_dir, opts);
+    defer result.deinit();
+    try std.testing.expect(!revo.isFalse(result.value));
 }
 
 fn expectTopNumber(result: *TopResult, expected: f64) !void {
@@ -178,7 +212,7 @@ fn buildOkWithWarnings(source: []const u8, vm: *revo.VM, w: *?diagnostic.Report)
             defer alloc.free(bytecode.spans);
         },
         .err => |lang_err| {
-            revo.printBuildError(alloc, .{ .text = source }, lang_err);
+            revo.printBuildError(alloc, .{ .text = source }, lang_err, vm.runtime.supports_color);
             vm.runtime.resetDiagArena();
             return error.ExpectedCompileSuccess;
         },

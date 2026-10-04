@@ -466,30 +466,3 @@ test "template prelude macros complete no more" {
     try expectCompletion(items2, "print", .function);
     for (items2) |it| try std.testing.expect(!std.mem.eql(u8, it.label, "print!"));
 }
-
-test "imported manifest members complete by bare name" {
-    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
-    defer arena.deinit();
-    const alloc = arena.allocator();
-
-    var tmp = std.testing.tmpDir(.{});
-    defer tmp.cleanup();
-    try tmp.dir.writeFile(std.testing.io, .{ .sub_path = "shapes.d.rv", .data =
-        \\pub type geo.Point = num
-    });
-    var dir_buf: [std.Io.Dir.max_path_bytes]u8 = undefined;
-    const dir_n = try tmp.dir.realPath(std.testing.io, &dir_buf);
-    const dir_path = dir_buf[0..dir_n];
-
-    var vm = try VM.init(.{ .alloc = alloc, .io = std.testing.io, .diag_alloc = alloc });
-    defer vm.deinit();
-    var ws = try Workspace.initWithVm(&vm, alloc);
-    defer ws.deinit();
-
-    const script = try std.fmt.allocPrint(alloc, "{s}/app.rv", .{dir_path});
-    defer alloc.free(script);
-    const text = "const shapes = import \"shapes.d.rv\"\nshapes.";
-    const id = try ws.open(script, text, .{});
-    const items = try ws.completions(arena.allocator(), id, text, text.len);
-    try expectCompletion(items, "Point", .field);
-}

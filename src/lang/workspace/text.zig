@@ -112,13 +112,9 @@ pub fn containsId(items: []const FileId, id: FileId) bool {
 }
 
 /// does a dep file serve as the module named `name`? plain modules match by
-/// stem (`foo.rv` -> `foo`), lib manifests by `<name>.d.rv`
+/// stem (`foo.rv` -> `foo`)
 pub fn moduleFileNameMatches(snap_name: []const u8, name: []const u8) bool {
-    const base = std.Io.Dir.path.basename(snap_name);
-    const ext = std.Io.Dir.path.extension(snap_name);
     if (std.mem.eql(u8, std.Io.Dir.path.stem(snap_name), name)) return true;
-    if (ext.len > 0 and std.mem.endsWith(u8, base, ".d.rv") and
-        std.mem.eql(u8, base[0 .. base.len - 5], name)) return true;
     return false;
 }
 
@@ -205,7 +201,7 @@ pub fn findCallAtPosition(src: []const u8, pos: Position) ?CallAtPos {
 
 /// walk ast to build a map of byte offset -> semantic token type
 pub fn buildASTSpanMap(arena: std.mem.Allocator, source: []const u8) ?std.AutoHashMap(usize, u32) {
-    const parsed = Parser.parseSourceReport(arena, source) catch return null;
+    const parsed = Parser.parseSourceReport(arena, source, .{}) catch return null;
     const root = switch (parsed) {
         .ok => |n| n,
         .err => return null,
@@ -346,8 +342,7 @@ test "stripLastLine drops in-progress line" {
     try std.testing.expectEqualStrings("a", stripLastLine("a\nb"));
 }
 
-test "module file matches stem and manifest" {
+test "module file matches stem" {
     try std.testing.expect(moduleFileNameMatches("foo.rv", "foo"));
-    try std.testing.expect(moduleFileNameMatches("foo.d.rv", "foo"));
     try std.testing.expect(!moduleFileNameMatches("bar.rv", "foo"));
 }

@@ -62,7 +62,7 @@ each have a one-line `check()`;\
 new syntax: `Lexer.zig` (tokens) -> `Parser.zig` (tree) -> `ast.zig`
     (node kinds) -> `macro_pattern.zig` if it desugars, `compiler/` if it compiles
 
-new builtin: `../baselib/sigs/*.d.rv` decl plus zig impl (see `../baselib/`)
+new builtin: `../baselib/base.rv` table plus zig impl (see `../baselib/`)
     docs and runtime stay in sync that way
 
 new type behavior: `compiler/types.zig` inference, `type_syntax.zig` only if the text spelling changes

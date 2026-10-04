@@ -80,7 +80,6 @@ const Config = struct {
 
 pub fn main(provided_init: std.process.Init) void {
     var init = provided_init;
-    term.supports_color = term.isColorSupported(init.environ_map, init.io);
 
     if (build_opts.mimalloc) init.gpa = @import("mimalloc").mim_allocator;
 
@@ -98,7 +97,7 @@ pub fn main(provided_init: std.process.Init) void {
         else => |err| {
             var stderr_buf: [256]u8 = undefined;
             var stderr = revo.stderr().writer(init.io, &stderr_buf);
-            term.printError(&stderr.interface, "{s}", .{@errorName(err)}) catch return;
+            term.printError(&stderr.interface, hostColor(init), "{s}", .{@errorName(err)}) catch return;
             std.process.exit(1);
         },
     };
@@ -235,14 +234,14 @@ fn runMain(init: std.process.Init) !void {
 fn printError(init: std.process.Init, comptime fmt: []const u8, args: anytype) void {
     var buf = std.Io.Writer.Allocating.init(init.gpa);
     defer buf.deinit();
-    term.printError(&buf.writer, fmt, args) catch return;
+    term.printError(&buf.writer, hostColor(init), fmt, args) catch return;
     std.debug.print("{s}", .{buf.written()});
 }
 
 fn printSuccess(init: std.process.Init, comptime fmt: []const u8, args: anytype) void {
     var buf = std.Io.Writer.Allocating.init(init.gpa);
     defer buf.deinit();
-    term.printSuccess(&buf.writer, fmt, args) catch return;
+    term.printSuccess(&buf.writer, hostColor(init), fmt, args) catch return;
     std.debug.print("{s}", .{buf.written()});
 }
 
@@ -269,8 +268,23 @@ fn runFromStdin(init: std.process.Init, gpa: Allocator, arena: Allocator, config
     }
 }
 
+var cached_color: ?bool = null;
+fn hostColor(init: std.process.Init) bool {
+    if (cached_color) |c| return c;
+    const c = term.isColorSupported(init.environ_map, init.io);
+    cached_color = c;
+    return c;
+}
+
 fn initVM(init: std.process.Init, gpa: Allocator, argv: []const [:0]const u8, threads: usize) !VM {
-    return VM.init(.{ .alloc = gpa, .io = init.io, .argv = argv, .diag_alloc = gpa, .threads = threads }) catch |err| {
+    return VM.init(.{
+        .alloc = gpa,
+        .io = init.io,
+        .argv = argv,
+        .diag_alloc = gpa,
+        .threads = threads,
+        .supports_color = hostColor(init),
+    }) catch |err| {
         printError(init, "initializing vm - {}", .{err});
         return error.VmInitError;
     };
@@ -301,14 +315,14 @@ fn compileSource(
     defer analysis.deinit(gpa);
 
     if (analysis.diagnostics) |lang_err| {
-        revo.printBuildError(gpa, .{ .name = source_name, .text = source_text }, lang_err);
+        revo.printBuildError(gpa, .{ .name = source_name, .text = source_text }, lang_err, hostColor(init));
         analysis.diagnostics = null;
         vm.runtime.resetDiagArena();
         return error.CompilationError;
     }
 
     if (analysis.warnings) |w| {
-        revo.printBuildWarning(gpa, .{ .name = source_name, .text = source_text }, w);
+        revo.printBuildWarning(gpa, .{ .name = source_name, .text = source_text }, w, hostColor(init));
     }
 
     const bytecode = analysis.bytecode.?;
@@ -319,12 +333,12 @@ fn compileSource(
 fn printResult(vm: *VM, mode: revo.Value.PrintMode) !void {
     var res = std.Io.Writer.Allocating.init(vm.runtime.alloc);
     defer res.deinit();
-    vm.mainResult().write(&res.writer, vm, mode) catch return;
+    vm.mainResult().write(&res.writer, vm, mode, vm.runtime.supports_color) catch return;
     std.debug.print("{s}\n", .{res.written()});
 }
 
 fn runBytecode(
-    _: std.process.Init,
+    init: std.process.Init,
     gpa: Allocator,
     vm: *VM,
     name: []const u8,
@@ -354,7 +368,7 @@ fn runBytecode(
     switch (run_result) {
         .ok => if (echo_last) |mode| try printResult(vm, mode),
         .err => |failure| {
-            revo.printRunError(gpa, source, failure);
+            revo.printRunError(gpa, source, failure, hostColor(init));
             vm.runtime.resetDiagArena();
         },
     }
@@ -732,5 +746,5 @@ fn compileToBytecode(
 }
 
 pub fn printRuntimeFailure(init: std.process.Init, failure: revo.RunFailure, source: []const u8) void {
-    revo.printRunError(init.gpa, source, failure);
+    revo.printRunError(init.gpa, source, failure, hostColor(init));
 }

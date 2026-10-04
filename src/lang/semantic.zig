@@ -203,8 +203,15 @@ const SemanticChecker = struct {
     known_globals: std.StringHashMap(void),
     /// known globals rebound by user code (shadowed by a local binding)
     shadowed_globals: std.StringHashMap(void),
-    /// every top-level declared name, calls and idents may reference
-    /// declarations that appear later in the file
+    /// toplevel fn bindings only, so a fn may call a sibling defined below it
+    ///
+    /// this mirrors `predeclare` in `compiler/locals.zig` name for name
+    ///
+    /// anything the compiler skips there has no slot
+    /// ,,, so letting it through here would typecheck
+    /// and then die at runtime with an undefined variable
+    ///
+    /// . plain values are stay order dependent instead
     predeclared: std.StringHashMapUnmanaged(void) = .empty,
     current_type_params: []const []const u8 = &.{},
     /// > 0 while inside a fn body; gates type_map/docs exports
@@ -271,7 +278,7 @@ const SemanticChecker = struct {
                     if (!std.mem.eql(u8, s.name, name)) continue;
                     if (s.head.kind == .global) break :find_global s;
                 };
-                break :find_global revo.baselib.specs.findFn(name);
+                break :find_global null;
             } orelse continue;
             if (try checker.makeStdlibSig(spec)) |sig| {
                 try checker.scopes.items[checker.scopes.items.len - 1].values.put(name, .{ .info = .{ .tag = .{ .function = sig } } });
@@ -306,26 +313,34 @@ const SemanticChecker = struct {
         self.predeclared.deinit(self.alloc);
     }
 
-    /// collect every top-level declared name so forward references don't
-    /// read as unknown names
+    /// collect top-level fn binding names so forward references
+    /// between them don't read as unknown names
+    ///
+    /// `predeclare` in the compiler is the other half
+    /// ; keep the two predicates identical
+    ///   or the checker will bless names the compiler never gave a slot
     fn collectPredeclared(self: *SemanticChecker, root: *const ast.Node) !void {
-        const items: []const *ast.Node = switch (root.expr) {
+        const items: []const *const ast.Node = switch (root.expr) {
             .block => |exprs| exprs,
             else => return,
         };
+
         for (items) |item| {
-            const inner: *const ast.Node = switch (item.expr) {
-                .decl => |d| d.inner,
-                else => item,
+            const decl = switch (item.expr) {
+                .decl => |d| d,
+                else => continue,
             };
-            const name: ?[]const u8 = switch (inner.expr) {
-                .binding => |b| if (b.target.expr == .ident) b.target.expr.ident else null,
-                .type_alias => |t| t.name,
-                .import_stmt => |stmt| stmt.name,
-                .proc_macro => |p| p.name,
-                else => null,
-            };
-            if (name) |n| try self.predeclared.put(self.alloc, n, {});
+
+            if (decl.kind == .global) continue; // duh
+            switch (decl.inner.expr) {
+                .binding => |b| {
+                    if (b.target.expr != .ident or b.value.expr != .fn_expr) continue;
+                    const name = b.target.expr.ident;
+                    if (ast.isDiscardName(name)) continue;
+                    try self.predeclared.put(self.alloc, name, {});
+                },
+                else => {},
+            }
         }
     }
 
@@ -337,7 +352,7 @@ const SemanticChecker = struct {
         defer self.alloc.free(source_alloc);
 
         const source = self.alloc.dupe(u8, source_alloc) catch return null;
-        return Parser.parseSource(self.alloc, source) catch return null;
+        return Parser.parseSource(self.alloc, source, .{}) catch return null;
     }
 
     fn finishReport(self: *SemanticChecker) !diagnostic.Report {
@@ -394,6 +409,41 @@ const SemanticChecker = struct {
     /// scope-only registration; never exports to type_map/docs
     fn declareBuiltin(self: *SemanticChecker, name: []const u8) !void {
         return self.declareInner(name, .{ .tag = .any }, null, false, .binding);
+    }
+
+    /// a declaration that lands on a name already in reach
+    ///
+    /// newest wins silently, which is rarely what the writer meant, so
+    /// say so. called from the binding and param sites, not from
+    /// `declare`, because assignment and pattern tracking reuse declare
+    /// and must stay quiet.
+    fn warnShadow(self: *SemanticChecker, name: []const u8, span: ast.Span) !void {
+        if (ast.isDiscardName(name)) return;
+        // scope 0 holds the seeded baselib globals; shadowing one of those
+        // is a normal thing to do, only warn once we are inside the file
+        if (self.scopes.items.len <= 1) return;
+        const here = self.scopes.items[self.scopes.items.len - 1].values;
+        if (here.contains(name)) {
+            try self.appendWarn(
+                try std.fmt.allocPrint(self.alloc, "`{s}` is already declared in this scope", .{name}),
+                span,
+                try self.alloc.dupe(u8, "already declared"),
+                "duplicate-declaration",
+            );
+            return;
+        }
+        var i = self.scopes.items.len - 1;
+        while (i > 1) {
+            i -= 1;
+            if (!self.scopes.items[i].values.contains(name)) continue;
+            try self.appendWarn(
+                try std.fmt.allocPrint(self.alloc, "`{s}` shadows an outer binding", .{name}),
+                span,
+                try self.alloc.dupe(u8, "shadows outer binding"),
+                "shadowed-binding",
+            );
+            return;
+        }
     }
 
     /// record into the graph too
@@ -578,7 +628,9 @@ const SemanticChecker = struct {
                 }
             }
         }
-        // method lookup for string and table
+        // method lookup runs through the type's module table: the module
+        // fn doubles as the method, e.g. `t:unwrap_err()` resolves
+        // `table.unwrap_err` at runtime
         const target: ?revo.baselib.host.ParamType = switch (object_type.tag) {
             .number => .number,
             .string => .string,
@@ -586,13 +638,6 @@ const SemanticChecker = struct {
             else => null,
         };
         if (target) |t| {
-            if (findMethodByNameAndTarget(name, t)) |spec| {
-                if (self.makeStdlibSig(spec) catch null) |sig| {
-                    return .{ .tag = .{ .function = sig } };
-                }
-            }
-            // single-entry baselib: the module fn doubles as the method, e.g.
-            // `t:unwrap_err()` resolves `table.unwrap_err` at runtime
             if (findModuleByNameAndTarget(name, t)) |spec| {
                 if (self.makeStdlibSig(spec) catch null) |sig| {
                     return .{ .tag = .{ .function = sig } };
@@ -620,6 +665,30 @@ const SemanticChecker = struct {
         return .{ .tag = .any };
     }
 
+    /// `T?` and `?T` both land as a union carrying `:nil`
+    fn isNilableParam(te: ?*ast.TypeExpr) bool {
+        const t = te orelse return false;
+        const variants = switch (t.kind) {
+            .union_of => |v| v,
+            else => return false,
+        };
+        for (variants) |v| {
+            if (v.kind == .atom and std.mem.startsWith(u8, v.kind.atom, ":")) return true;
+        }
+        return false;
+    }
+
+    /// params up to the first soft one: `?name:`, `name: T?` or a variadic
+    ///   tail, all of which the host fills in
+    fn fixedPrefix(params: []const ast.FnParam) usize {
+        var n: usize = 0;
+        for (params) |p| {
+            if (p.optional or p.variadic or isNilableParam(p.type_name)) break;
+            n += 1;
+        }
+        return n;
+    }
+
     fn makeStdlibSig(self: *SemanticChecker, spec: *const revo.baselib.specs.FnSpec) !?*const FnSig {
         if (spec.is_type) return null;
         if (self.sig_cache.get(spec)) |sig| return sig;
@@ -639,15 +708,15 @@ const SemanticChecker = struct {
         const names_slice = try param_names.toOwnedSlice(self.alloc);
         const types_slice = try param_types.toOwnedSlice(self.alloc);
 
-        // required comes from the host arity, not the `?` flags: baselib
-        // spells optionals as nilable unions (`mode: string?`) with variadic
-        // hosts, so flag-derived counts would over-require. keep in sync.
+        // required is the host arity, not the `?` flags, since baselib
+        // spells optionals as nilable; the fixed prefix is a floor on top,
+        //   so `zip(a, b, rest...)` still wants two. keep in sync
         const ret = if (ft.return_type) |r| types_mod.evalTypeExpr(self.check(), r) catch types_mod.TypeInfo{ .tag = .any } else types_mod.TypeInfo{ .tag = .any };
         const sig = try types_mod.newSignature(self.alloc, .{
             .param_names = names_slice,
             .params = types_slice,
             .return_type = ret,
-            .required_count = spec.f.arity,
+            .required_count = @max(spec.f.arity, fixedPrefix(ft.params)),
             .type_params = spec.type_params,
             .doc = if (spec.doc.len > 0) spec.doc else null,
         });
@@ -685,6 +754,16 @@ const SemanticChecker = struct {
         try self.pushScope(.func);
         defer self.popScope();
         for (fn_expr.params, sig.params) |param, param_type| {
+            // the func scope is fresh, so anything already in it is a repeated
+            // param; the second would just overwrite the first's slot
+            if (!ast.isDiscardName(param.name) and
+                self.scopes.items[self.scopes.items.len - 1].values.contains(param.name))
+            {
+                const msg = try std.fmt.allocPrint(self.alloc, "duplicate parameter `{s}`", .{param.name});
+                if (self.first_code == null) self.first_code = "duplicate-parameter";
+                try self.appendError(msg, param.name_span, "duplicate parameter");
+            }
+            try self.warnShadow(param.name, param.name_span);
             try self.declare(param.name, param_type, null, .param);
         }
         // defaults can reference sibling params, so they analyze here where
@@ -780,6 +859,17 @@ const SemanticChecker = struct {
                 if (static_key) |key| try self.checkKnownField(idx.object, key, node.span);
                 break :blk types_mod.inferExprType(self.check(), node);
             },
+            .table => |entries| blk: {
+                for (entries) |entry| {
+                    if (entry.key) |key| {
+                        if (entry.computed or (key.expr != .ident and key.expr != .atom)) {
+                            _ = try self.analyzeNode(key);
+                        }
+                    }
+                    _ = try self.analyzeNode(entry.value);
+                }
+                break :blk types_mod.inferExprType(self.check(), node);
+            },
             .range_literal => |v| blk: {
                 _ = try self.analyzeNode(v.start);
                 _ = try self.analyzeNode(v.end);
@@ -817,6 +907,7 @@ const SemanticChecker = struct {
                 else
                     .{ .tag = .any };
                 for (v.params) |param| {
+                    try self.warnShadow(param.name, param.name_span);
                     try self.declare(param.name, param_type, null, .param);
                 }
                 const body_type = try self.analyzeNode(v.body);
@@ -1059,7 +1150,7 @@ const SemanticChecker = struct {
                 try self.declare(stmt.name, .{ .tag = .any }, null, .import);
                 break :blk .{ .tag = .any };
             },
-            .number, .string, .multiline_string, .atom, .nil, .table, .table_pattern, .quasiquote, .test_block, .test_suite, .proc_macro => types_mod.inferExprType(self.check(), node),
+            .number, .string, .multiline_string, .atom, .nil, .table_pattern, .quasiquote, .test_block, .test_suite, .proc_macro => types_mod.inferExprType(self.check(), node),
             .ascribed => blk: {
                 try self.appendError(
                     "type ascriptions only go in match patterns",
@@ -1222,6 +1313,7 @@ const SemanticChecker = struct {
             return .{ .tag = .any };
         }
         const name = binding.target.expr.ident;
+        try self.warnShadow(name, binding.target.span);
         // docs ride on the decl wrapper; ident and field values inherit the source's doc
         const doc: ?[]const u8 = decl_doc orelse binding.doc orelse blk: {
             if (binding.value.expr == .ident) {
@@ -1280,12 +1372,11 @@ const SemanticChecker = struct {
                     }
                 }
                 if (entry.key) |key| {
-                    if (key.expr == .ident) {
-                        const field_type = try self.analyzeNode(entry.value);
-                        try fields.put(key.expr.ident, field_type);
-                    } else {
-                        _ = try self.analyzeNode(entry.value);
+                    if (entry.computed or (key.expr != .ident and key.expr != .atom)) {
+                        _ = try self.analyzeNode(key);
                     }
+                    const field_type = try self.analyzeNode(entry.value);
+                    if (key.expr == .ident) try fields.put(key.expr.ident, field_type);
                 } else {
                     const ft = try self.analyzeNode(entry.value);
                     const idx_name = try std.fmt.allocPrint(self.alloc, "{d}", .{implicit_idx});
@@ -1341,24 +1432,48 @@ const SemanticChecker = struct {
     }
 
     fn declarePatternNames(self: *SemanticChecker, pattern: *const ast.Node) !types_mod.TypeInfo {
+        // seen is per-pattern, NOT per scope
+        // : match arms deliberately bind the same name from several matchers
+        // , a pattern binding it twice is a typo
+        var seen = std.StringHashMap(void).init(self.alloc);
+        defer seen.deinit();
+        return self.declarePatternNamesSeen(pattern, &seen);
+    }
+
+    fn declarePatternNamesSeen(
+        self: *SemanticChecker,
+        pattern: *const ast.Node,
+        seen: *std.StringHashMap(void),
+    ) !types_mod.TypeInfo {
         switch (pattern.expr) {
             .ident => |name| {
                 if (!ast.isDiscardName(name)) {
+                    if (seen.contains(name)) {
+                        const msg = try std.fmt.allocPrint(self.alloc, "duplicate name `{s}` in pattern", .{name});
+                        if (self.first_code == null) self.first_code = "duplicate-pattern-name";
+                        try self.appendError(msg, pattern.span, "duplicate name");
+                        return .{ .tag = .any };
+                    }
+                    try seen.put(name, {});
                     try self.declare(name, .{ .tag = .any }, null, .binding);
                 }
             },
             .table_pattern => |items| {
                 for (items) |item| {
-                    _ = try self.declarePatternNames(item);
+                    _ = try self.declarePatternNamesSeen(item, seen);
                 }
             },
             .ascribed => |a| {
-                const inner_ti = types_mod.evalTypeExpr(self.check(), a.type_name) catch types_mod.TypeInfo{ .tag = .any };
+                const inner_ti = types_mod.evalTypeExpr(self.check(), a.type_name) catch
+                    types_mod.TypeInfo{ .tag = .any };
 
                 if (a.expr.expr == .ident and !ast.isDiscardName(a.expr.expr.ident)) {
-                    try self.declare(a.expr.expr.ident, inner_ti, null, .binding);
+                    if (!seen.contains(a.expr.expr.ident)) {
+                        try seen.put(a.expr.expr.ident, {});
+                        try self.declare(a.expr.expr.ident, inner_ti, null, .binding);
+                    }
                 } else {
-                    _ = try self.declarePatternNames(a.expr);
+                    _ = try self.declarePatternNamesSeen(a.expr, seen);
                 }
             },
             else => {},
@@ -1396,6 +1511,41 @@ const SemanticChecker = struct {
                 try self.checkPatternAscriptions(a.expr, elem);
             } else {
                 try self.checkPatternAscriptions(item, elem);
+            }
+        }
+    }
+
+    /// an `{a, b} = v` target already has a declared type from an bind
+    ///   , so hold it to the element type
+    ///
+    /// only fires when the element type is actually known
+    ///   , which needs a structurally annotated source
+    fn checkPatternTargets(self: *SemanticChecker, pattern: *const ast.Node, context: types_mod.TypeInfo) !void {
+        const items = switch (pattern.expr) {
+            .table_pattern => |items| items,
+            else => return,
+        };
+
+        for (items, 0..) |item, i| {
+            const name = switch (item.expr) {
+                .ident => |n| n,
+                .ascribed => |a| if (a.expr.expr == .ident) a.expr.expr.ident else continue,
+                .table_pattern => {
+                    const elem = patternElemType(self, context, i) orelse continue;
+                    try self.checkPatternTargets(item, elem);
+                    continue;
+                },
+                else => continue,
+            };
+            if (ast.isDiscardName(name)) continue;
+            if (!self.typed_names.contains(name)) continue;
+
+            const expected = self.lookup(name) orelse continue;
+            if (expected.tag == .any) continue;
+            const elem = patternElemType(self, context, i) orelse continue;
+
+            if (!types_mod.canCoerce(elem, expected)) {
+                try self.appendTypeMismatch(item.span, name, expected, elem);
             }
         }
     }
@@ -1576,6 +1726,11 @@ const SemanticChecker = struct {
                     try self.markEscaped(field.object.expr.ident);
                 }
             },
+            .table_pattern => {
+                try self.checkPatternTargets(target, value_type);
+                try self.checkPatternAscriptions(target, value_type);
+                _ = try self.declarePatternNames(target);
+            },
             .index => |idx| {
                 // static keys join the known fields so later reads see
                 // them; numbers stay untracked (never field names)
@@ -1677,11 +1832,16 @@ const SemanticChecker = struct {
             if (!call.implicit_self and !std.mem.endsWith(u8, call.callee.expr.field.name, "!")) {
                 const f = call.callee.expr.field;
                 const obj_type = types_mod.inferExprType(self.check(), f.object);
-                const dispatches = switch (obj_type.tag) {
-                    .string => findMethodByNameAndTarget(f.name, .string) != null,
-                    .table => findMethodByNameAndTarget(f.name, .table) != null,
-                    else => false,
+                // a dot-call matching a member of the object's module table
+                // dispatches at runtime (`t.at(0)` finds `table.at`), so only
+                // flag names that resolve to neither field nor module member
+                const target: ?revo.baselib.host.ParamType = switch (obj_type.tag) {
+                    .number => .number,
+                    .string => .string,
+                    .table => .table,
+                    else => null,
                 };
+                const dispatches = if (target) |t| findModuleByNameAndTarget(f.name, t) != null else false;
                 if (!dispatches) try self.checkKnownField(f.object, f.name, call.callee.span);
             }
         }
@@ -1704,13 +1864,14 @@ const SemanticChecker = struct {
             const total_args = call.args.len + self_offset;
             if (total_args < sig.required_count or (total_args > sig.params.len)) {
                 const baselib_spec = find_spec: {
-                    // same name can exist as both a global and a method
-                    // (e.g. `read` vs `file:read`); match the call kind
+                    // same name can exist as both a global and a module
+                    // member; match the call kind (`t:m()` prepends self,
+                    // so only namespaced members pair with colon calls)
                     for (revo.baselib.specs.full_specs) |group| for (group) |*s| {
                         if (s.is_type) continue;
                         if (!std.mem.eql(u8, s.name, name)) continue;
                         const head = s.head;
-                        if (call.implicit_self and head.kind == .method) break :find_spec s;
+                        if (call.implicit_self and head.kind == .namespaced) break :find_spec s;
                         if (!call.implicit_self and head.kind == .global) break :find_spec s;
                     };
                     break :find_spec revo.baselib.specs.findFn(name);
@@ -1903,20 +2064,6 @@ const SemanticChecker = struct {
         return assign.target.expr.ident;
     }
 
-    fn findMethodByNameAndTarget(name: []const u8, target: revo.baselib.host.ParamType) ?*const revo.baselib.specs.FnSpec {
-        for (revo.baselib.specs.full_specs) |group| {
-            for (group) |*spec| {
-                if (spec.is_type) continue;
-                if (!std.mem.eql(u8, spec.name, name)) continue;
-                const head = spec.head;
-                if (head.kind == .method) {
-                    if (head.target) |t| if (std.meta.activeTag(t) == std.meta.activeTag(target)) return spec;
-                }
-            }
-        }
-        return null;
-    }
-
     fn findModuleByNameAndTarget(name: []const u8, target: revo.baselib.host.ParamType) ?*const revo.baselib.specs.FnSpec {
         const module_name = target.moduleName() orelse return null;
         for (revo.baselib.specs.full_specs) |group| {
@@ -2012,7 +2159,7 @@ test "graph mirrors the checker" {
     const alloc = arena.allocator();
 
     const src = "const x = 1\nfn f(x) do x end";
-    const parsed = try Parser.parseSource(alloc, src);
+    const parsed = try Parser.parseSource(alloc, src, .{});
     // wrapped like mergeWithPreludes does in production
     // , so top decls live one scope down from the root
     const items: []const *ast.Node = switch (parsed.expr) {

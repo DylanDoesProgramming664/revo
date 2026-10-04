@@ -35,6 +35,8 @@ pub fn deinitBytecode(alloc: std.mem.Allocator, bytecode: pipeline.Bytecode) voi
 }
 
 /// merge two error reports into one (dedup span parts by range+message)
+///
+/// parts get copied, callers can free both inputs right after
 pub fn mergeReports(alloc: std.mem.Allocator, a: pipeline.Error, b: pipeline.Error) !diagnostic.Report {
     const a_report = switch (a) {
         .parse => |f| f.report,
@@ -50,7 +52,9 @@ pub fn mergeReports(alloc: std.mem.Allocator, a: pipeline.Error, b: pipeline.Err
     };
     const total = a_report.parts.len + b_report.parts.len;
     var all_parts = try std.ArrayList(diagnostic.Part).initCapacity(alloc, total);
-    for (a_report.parts) |p| all_parts.appendAssumeCapacity(p);
+
+    errdefer for (all_parts.items) |part| part.deinit(alloc);
+    for (a_report.parts) |p| try all_parts.append(alloc, try p.copy(alloc));
     for (b_report.parts) |p| {
         var dup = false;
         if (p == .span) {
@@ -73,7 +77,7 @@ pub fn mergeReports(alloc: std.mem.Allocator, a: pipeline.Error, b: pipeline.Err
                 }
             }
         }
-        if (!dup) all_parts.appendAssumeCapacity(p);
+        if (!dup) try all_parts.append(alloc, try p.copy(alloc));
     }
     const message = if (a_report.message.len > 0)
         try alloc.dupe(u8, a_report.message)
@@ -266,4 +270,51 @@ pub fn getKnownGlobals(ws: *Workspace, alloc: std.mem.Allocator) ![]const []cons
     const vm = ws.vm orelse return &.{};
 
     return pipeline.knownGlobalsFromVm(vm, alloc);
+}
+
+test "mergeReports owns part text after both inputs are freed" {
+    const alloc = std.testing.allocator;
+
+    const a: pipeline.Error = .{ .parse = .{ .kind = .UnexpectedToken, .report = .{
+        .message = try alloc.dupe(u8, "unexpected token"),
+        .code = "unexpected-token",
+        .source_name = try alloc.dupe(u8, "a.rv"),
+        .source = try alloc.dupe(u8, "print(1 2)\n"),
+        .parts = try alloc.dupe(diagnostic.Part, &.{
+            .{ .@"error" = try alloc.dupe(u8, "unexpected token") },
+            .{ .span = .{
+                .span = .{ .start = 8, .end = 9, .line = 1, .column = 9 },
+                .role = .primary,
+                .message = try alloc.dupe(u8, "here"),
+            } },
+        }),
+    } } };
+
+    const b: pipeline.Error = .{ .semantic = .{ .kind = .SemanticError, .report = .{
+        .message = try alloc.dupe(u8, "name `foo` is not defined"),
+        .source_name = try alloc.dupe(u8, "a.rv"),
+        .source = try alloc.dupe(u8, "print(1 2)\n"),
+        .parts = try alloc.dupe(diagnostic.Part, &.{
+            .{ .@"error" = try alloc.dupe(u8, "name `foo` is not defined") },
+        }),
+    } } };
+
+    var merged = try mergeReports(alloc, a, b);
+    defer merged.deinit(alloc);
+    try std.testing.expectEqual(@as(usize, 3), merged.parts.len);
+
+    // :: aliasing
+    //   merged text is never the input text, freeing the inputs
+    //   then poisons those bytes under a debug allocator
+    try std.testing.expect(a.parse.report.parts[0].@"error".ptr != merged.parts[0].@"error".ptr);
+    try std.testing.expect(a.parse.report.parts[1].span.message.ptr != merged.parts[1].span.message.ptr);
+    try std.testing.expect(b.semantic.report.parts[0].@"error".ptr != merged.parts[2].@"error".ptr);
+
+    pipeline.deinitError(alloc, a);
+    pipeline.deinitError(alloc, b);
+
+    try std.testing.expectEqualStrings("unexpected token", merged.parts[0].@"error");
+    try std.testing.expectEqualStrings("here", merged.parts[1].span.message);
+    try std.testing.expectEqualStrings("name `foo` is not defined", merged.parts[2].@"error");
+    try std.testing.expectEqualStrings("a.rv", merged.source_name.?);
 }

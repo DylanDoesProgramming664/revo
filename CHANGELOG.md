@@ -13,6 +13,9 @@ tuples and structs are gone now, most breaking change yet
 
 ### Added
 
+- lsp hover on baselib module names shows a member card with the module doc
+- lsp hover on qualified members (`math.floor`) prefers the named module over
+  the unqualified first match
 - baselib-style native extension api, `revo.ext`
   - see `examples/foreign/raylib`
 - structural table types: annotate tables by shape with `{ name: string, age: num }`
@@ -219,6 +222,8 @@ tuples and structs are gone now, most breaking change yet
 
 ### Removed
 
+- `.d.rv` files are gone, no backcompat
+  see `extensions/foreign/*` and `src/baselib/base.rv`
 - loop-accumulator promotion pass
   only fired on simple linear `r = r + 1` chains and i didnt know what i was doing when i made it
 - struct type, `struct Name { ... }`, is gone
@@ -226,6 +231,42 @@ tuples and structs are gone now, most breaking change yet
   use tables with closures instead: `{ name = "ana", greet = fn(self) ... }`
 
 ### Changed
+
+- a name bound twice in one place is an error
+  sibling matchers may still share a name: `| {:ok, n} => n | {:err, n} => n`
+
+- shadowing warns, newest binding still wins
+  - `duplicate-declaration` for a second declaration in one scope
+  - `shadowed-binding` for a binding that hides an outer one, incl params
+
+  ```ruby
+  let x = 1
+  let x = 2 # warning
+
+  let y = 10
+
+  const f = fn(y) do
+    let y = 20 # warning
+    y
+  end
+  ```
+
+  shadowing a baselib global (`sum`, `print`, ...) is ok, that is a normal thing to do
+
+- only fn bindings may be forward referenced, plain values are order dependent
+  left fns alone so that mutual recursion between top-level fns still works
+  - reading a value before its own declaration is now an `unknown-name`
+    compile error instead of an `undefined variable` one at runtime
+
+  ```ruby
+  const is_even = fn(n) if n == 0 1 else is_odd(n - 1)
+  const is_odd = fn(n) if n == 0 0 else is_even(n - 1)
+  is_even(10) # 1, fine
+
+  const read = fn() do value end
+  const value = 42
+  read() # error: name `value` is not defined
+  ```
 
 - generics are `o.f<T>(x: T)` instead of `o.f[T](x: T)`
 - lang/ import untangle, breaking if you reached into it
@@ -284,8 +325,8 @@ tuples and structs are gone now, most breaking change yet
   and `:false`) as the value instead of comparing against `:true`
 - `promote.zig`'s `[8]Register` buffer was too small for `call_field`
   instructions with too many args
-- `const x = import "raylib.so"` named imports now get the fields from the module's
-  `.d.rv` manifest just like the normal `import "raylib.so"`
+- `const x = import "raylib.so"` named imports resolve like a plain
+  `import "raylib.so"`
 - lsp signatures show generics and optional params:
   `fn id<T>(v: T) -> T`, `f(a: num, b?: num)` in hover and signature help
 - `revo -e` no longer runs piped stdin as a program first, stdin stays available

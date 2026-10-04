@@ -1142,7 +1142,10 @@ pub const Compiler = struct {
         implicit_self: bool,
     ) InternalCompileError!bool {
         const object_type = self.annotatedType(field.object);
+        // same module table the semantic lookup resolves through, for every
+        // module-backed primitive; unannotated receivers stay on call_field
         const module_name = switch (object_type.tag) {
+            .number => "number",
             .string => "string",
             .table => "table",
             else => return false,

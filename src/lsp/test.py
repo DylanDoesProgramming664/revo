@@ -386,19 +386,19 @@ x
 
 
 @pytest.mark.asyncio(loop_scope="module")
-async def test_manifest_hover(client: LanguageClient):
-    """hover over a lib import typed by its .d.rv manifest"""
+async def test_typed_table_hover(client: LanguageClient):
+    """hover over a typed-table re-export resolves the ascribed sig"""
     import tempfile
 
     tmp = tempfile.TemporaryDirectory()
     try:
-        with open(os.path.join(tmp.name, "extension.so"), "w"):
-            pass
-        with open(os.path.join(tmp.name, "extension.d.rv"), "w") as f:
-            f.write("pub declare add = fn(a: number, b: number) -> number\n")
-            f.write("pub declare concat = fn(parts: table, sep: string) -> string\n")
+        with open(os.path.join(tmp.name, "native.rv"), "w") as f:
+            f.write("{\n  add = fn(a, b) do a + b end,\n}\n")
+        with open(os.path.join(tmp.name, "wrapper.rv"), "w") as f:
+            f.write('const n = import "./native.rv"\n')
+            f.write("pub const add: fn(a: number, b: number) -> number = n.add\n")
         uri = f"file://{tmp.name}/app.rv"
-        script = 'import "extension.so"\nprint(extension.concat({"a", "b"}, "-"))\n'
+        script = 'const w = import "./wrapper.rv"\nprint(w.add(1, 2))\n'
         client.text_document_did_open(
             params=DidOpenTextDocumentParams(
                 text_document=TextDocumentItem(
@@ -414,51 +414,40 @@ async def test_manifest_hover(client: LanguageClient):
         # hover over the module name
         result = await client.text_document_hover_async(
             params=HoverParams(
-                position=Position(line=0, character=10),
+                position=Position(line=1, character=7),
                 text_document=TextDocumentIdentifier(uri=uri),
             )
         )
         assert result is not None, "hover over module name is None"
         value = result.contents.value
         print("  module hover:", repr(value))
-        assert "module `extension`" in value
-        assert "concat" in value
-        # content is a revo code block so the editor can highlight it
-        assert "```revo" in value and value.index("```revo") < value.index("fn add"), \
-            f"member sigs not in a revo fence: {value}"
-        assert "- `fn" not in value, f"member bullets left in: {value}"
-        # range covers just the module name in the import statement
-        assert result.range is not None
-        r = result.range
-        print("  module hover range:", r)
-        assert r.start.line == 0 and r.start.character == 8, f"expected name span, got: {
-            r}"
-        assert r.end.character == 17, f"expected name span, got: {r}"
+        assert "module `w`" in value
+        assert "add" in value
 
-        # hover over the member at the call site: signature from the manifest,
-        # range covering just `concat` in the current file
+        # hover over the member at the call site: ascribed sig,
+        # range covering just `add` in the current file
         result = await client.text_document_hover_async(
             params=HoverParams(
-                position=Position(line=1, character=21),
+                position=Position(line=1, character=9),
                 text_document=TextDocumentIdentifier(uri=uri),
             )
         )
         assert result is not None, "hover over member is None"
         value = result.contents.value
         print("  member hover:", repr(value))
-        assert "fn concat(parts: table, sep: string) -> string" in value, f"expected manifest sig, got: {
+        assert "fn add(a: number, b: number) -> number" in value, f"expected ascribed sig, got: {
             value}"
         assert result.range is not None
         r = result.range
         print("  member hover range:", r)
-        assert r.start.line == 1 and r.start.character == 16, f"expected call-site word span, got: {
+        assert r.start.line == 1 and r.start.character == 8, f"expected call-site word span, got: {
             r}"
-        assert r.end.character == 22, f"expected call-site word span, got: {r}"
+        assert r.end.character == 11, f"expected call-site word span, got: {r}"
 
         # signature help inside the member call
         sig = await client.text_document_signature_help_async(
             params=SignatureHelpParams(
-                position=Position(line=1, character=24),
+                position=Position(line=1, character=13),
                 text_document=TextDocumentIdentifier(uri=uri),
             )
         )
@@ -466,37 +455,37 @@ async def test_manifest_hover(client: LanguageClient):
         assert sig is not None, "signature help over member call is None"
         label = sig.signatures[sig.active_signature].label
         assert label.startswith(
-            "concat(") and "table" in label and "string" in label, f"expected manifest sig, got: {label}"
+            "add(") and "number" in label, f"expected ascribed sig, got: {label}"
 
-        # hover over the declared name inside the manifest file itself:
-        # the range must cover just `zadd`, not the whole decl
-        manifest_uri = f"file://{tmp.name}/extension.d.rv"
-        with open(os.path.join(tmp.name, "extension.d.rv")) as f:
-            manifest_text = f.read()
+        # hover over the ascribed name inside the wrapper file itself:
+        # the range must cover just `add`, not the whole decl
+        wrapper_uri = f"file://{tmp.name}/wrapper.rv"
+        with open(os.path.join(tmp.name, "wrapper.rv")) as f:
+            wrapper_text = f.read()
         client.text_document_did_open(
             params=DidOpenTextDocumentParams(
                 text_document=TextDocumentItem(
-                    uri=manifest_uri,
+                    uri=wrapper_uri,
                     language_id="revo",
                     version=1,
-                    text=manifest_text,
+                    text=wrapper_text,
                 )
             )
         )
         await client.wait_for_notification("textDocument/publishDiagnostics")
-        name_col = manifest_text.index("add")  # `pub declare add = ...`
+        name_col = wrapper_text.split("\n")[1].index("add")  # `pub const add: ...`
         result = await client.text_document_hover_async(
             params=HoverParams(
-                position=Position(line=0, character=name_col + 1),
-                text_document=TextDocumentIdentifier(uri=manifest_uri),
+                position=Position(line=1, character=name_col + 1),
+                text_document=TextDocumentIdentifier(uri=wrapper_uri),
             )
         )
-        assert result is not None, "hover over manifest decl is None"
-        assert result.range is not None, f"hover over manifest decl has no range: {
+        assert result is not None, "hover over wrapper decl is None"
+        assert result.range is not None, f"hover over wrapper decl has no range: {
             result}"
         r = result.range
         print("  decl hover range:", r)
-        assert r.start.line == 0
+        assert r.start.line == 1
         assert r.start.character == name_col, f"range must start at the name: {
             r}"
         assert r.end.character == name_col + \

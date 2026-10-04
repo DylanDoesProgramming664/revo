@@ -71,7 +71,7 @@ test "parser reports multiple syntax errors in one pass" {
 
             var buf = std.Io.Writer.Allocating.init(alloc);
             defer buf.deinit();
-            try lang.renderError(alloc, &buf.writer, .{ .text = source }, .{ .parse = failure });
+            try lang.renderError(alloc, &buf.writer, .{ .text = source }, .{ .parse = failure }, .{});
             try std.testing.expect(buf.written().len != 0);
         },
         else => return error.ExpectedCompileFailure,
@@ -165,6 +165,34 @@ test "plain table uses baselib method" {
         \\ const t = {1, 2, 3}
         \\ t:len()
     , 3);
+}
+
+//
+// merge-method pinning: colon calls resolve through the type's module table
+//
+
+test "colon calls resolve string members with self prepended" {
+    try t.topNumber("\"abc\":len()", 3);
+    try t.topString(
+        \\ "abc":upper()
+    , "ABC");
+}
+
+test "colon calls resolve number members" {
+    try t.topNumber("(5):floor()", 5);
+}
+
+test "colon calls resolve generic table members" {
+    try t.topNumber("{1, 2}:at(0)", 1);
+}
+
+test "colon calls enforce arity at compile time" {
+    try t.expectSemanticError("\"abc\":split()");
+    try t.expectSemanticError("\"abc\":len(\"x\")");
+}
+
+test "colon calls enforce arg types at compile time" {
+    try t.expectSemanticError("\"abc\":split(42)");
 }
 
 test "string-key index does not shadow baselib method" {
@@ -1366,6 +1394,17 @@ test "semantic catches undefined variable" {
 test "semantic catches undefined function call" {
     try t.expectSemanticError("pritn(\"hi\")");
 }
+
+test "forward reference to a value is rejected at compile time" {
+    try t.expectErrorCode(
+        \\ const read = fn() do
+        \\     value
+        \\ end
+        \\ const value = 42
+        \\ read()
+    , "unknown-name");
+}
+
 test "runtime report includes not-a-function detail" {
     try t.expectRuntimeFailure(
         "1(2)",
@@ -1416,6 +1455,7 @@ test "runtime renderer includes source path" {
                 &buf.writer,
                 failure.report.source_name orelse "<source>",
                 source,
+                false,
             );
             try std.testing.expect(std.mem.find(u8, buf.written(), "examples/fail.rv:1:1") != null);
         },
@@ -1447,7 +1487,7 @@ test "runtime renderer includes stack trace call chain" {
         .err => |failure| {
             var buf = std.Io.Writer.Allocating.init(alloc);
             defer buf.deinit();
-            try failure.render(alloc, &buf.writer, source);
+            try failure.render(alloc, &buf.writer, source, false);
 
             try std.testing.expect(std.mem.find(u8, buf.written(), "stack trace:") != null);
             try std.testing.expect(std.mem.find(u8, buf.written(), "0: b at <source>:2:") != null);
@@ -2025,6 +2065,56 @@ test "local binding shadows outer binding" {
         \\ end
         \\ f()
     , 20);
+    try t.expectWarningCode(
+        \\ let x = 10
+        \\ const f = fn() do
+        \\     let x = 20
+        \\     x
+        \\ end
+        \\ f()
+    , "shadowed-binding");
+}
+
+test "redeclaration in one scope warns" {
+    // newest still wins at runtime
+    try t.topNumber(
+        \\ let x = 1
+        \\ let x = 2
+        \\ x
+    , 2);
+
+    try t.expectWarningCode(
+        \\ let x = 1
+        \\ let x = 2
+        \\ x
+    , "duplicate-declaration");
+}
+
+test "shadow warnings" {
+    // a binding landing on a param it hides
+    try t.expectWarningCode(
+        \\ const f = fn(x) do
+        \\   let x = 5
+        \\   x
+        \\ end
+        \\
+        \\ f(1)
+    , "shadowed-binding");
+
+    // shadowing a baselib global is ok
+    try t.expectNoWarning(
+        \\ const sum = fn(a, b) do
+        \\   a + b
+        \\ end
+        \\ sum(1, 2)
+    );
+
+    // reassignment is not redeclaration
+    try t.expectNoWarning(
+        \\ let x = 1
+        \\ x = 2
+        \\ x
+    );
 }
 
 test "assignment resolves to nearest binding" {
@@ -3295,6 +3385,29 @@ test "import typed function with no type annotations falls through" {
         \\ import "./plain"
         \\ plain.double(21)
     , 42);
+}
+
+test "ascribed pub re-export types the import" {
+    var m = try t.TmpMod.init(&.{
+        .{ .path = "native.rv", .data =
+        \\ {
+        \\   add = fn(a, b) do a + b end,
+        \\ }
+        },
+        .{ .path = "wrapper.rv", .data =
+        \\ const n = import "./native.rv"
+        \\ pub const add: fn(a: number, b: number) -> number = n.add
+        },
+    });
+    defer m.deinit();
+    try t.topNumberInDir(m.dir,
+        \\ const w = import "./wrapper.rv"
+        \\ w.add(19, 23)
+    , 42);
+    try t.expectCompileErrorInDir(m.dir,
+        \\ const w = import "./wrapper.rv"
+        \\ w.add("x", 2)
+    );
 }
 
 //
@@ -4813,11 +4926,33 @@ test "baselib sigs: module field calls resolve to spec sigs" {
     try t.topTrue("let b: bool = fs.exists?(\"/tmp\")");
 }
 
+test "baselib sigs: a module table is its own self" {
+    try t.topNumber("table.alen(table)", 0);
+
+    try t.topAtom("table.klen(table) == table.len(table)", "true");
+    try t.topAtom("table:klen() == table.len(table)", "true");
+    try t.topAtom("table.len(table) > 0 and table.alen(table) == 0", "true");
+}
+
 test "baselib sigs: module result flows through match" {
     try t.topAtom(
         \\ let r = fs.open("/definitely/not/a/real/path_xyz")
         \\ match r | {:ok, f} => :found | {:err, e} => e
     , "FileNotFound");
+}
+
+test "baselib sigs: iter surface names what the impl takes" {
+    // `zip` opens its tail after naming two, so one is a build error and not
+    // a runtime one. `count` takes one optional pred, it is not a variadic
+    try t.expectSemanticError("iter.zip({1, 2})");
+    try t.expectSemanticError("iter.count({1, 2, 3}, fn(x) x > 1, 9)");
+    try t.expectSemanticError("iter.count({1, 2, 3}, 5)");
+    // `to_iter` is a global, the compiler bakes that name into `|> to_iter`.
+    // module fields are not typed, so the dead member is a runtime miss
+    try t.expectRuntimeError("iter.to_iter({1, 2})", .NotAFunction);
+    try t.topAtom("iter.collect(iter.zip({1, 2}, {3, 4})) == { {1, 3}, {2, 4} }", "true");
+    try t.topNumber("iter.count({1, 2, 3, 4}, fn(x) x > 2)", 2);
+    try t.topAtom("iter.collect(to_iter({1, 2})) == {1, 2}", "true");
 }
 
 test "baselib sigs: local binding shadows baselib module" {
@@ -4926,6 +5061,44 @@ test "declare rejects duplicate names" {
     );
 }
 
+test "duplicate parameter is an error" {
+    try t.expectErrorCode(
+        \\ const f = fn(x, x) do x end
+        \\ f(1, 2)
+    , "duplicate-parameter");
+    // the fn shorthand goes through the same param loop
+    try t.expectErrorCode(
+        \\ fn g(a, a) a
+        \\ g(1, 2)
+    , "duplicate-parameter");
+    try t.expectNoWarning(
+        \\ const f = fn(_, _) do 1 end
+        \\ f(1, 2)
+    );
+}
+
+test "duplicate name in one pattern is an error" {
+    try t.expectErrorCode(
+        \\ let {a, a} = {1, 2}
+        \\ a
+    , "duplicate-pattern-name");
+    try t.expectErrorCode(
+        \\ let v = {x = 1}
+        \\ match v
+        \\ | {x, x} => x
+    , "duplicate-pattern-name");
+}
+
+test "one name bound by sibling matchers is fine" {
+    // per-matcher binds, the arm body sees the union, so the same name
+    // across matchers is the point and not a duplicate
+    try t.topNumber(
+        \\ match {:ok, 4}
+        \\ | {:ok, n} => n
+        \\ | {:err, n} => n
+    , 4);
+}
+
 test "declare rejects non-top-level placement" {
     try t.expectSemanticError(
         \\ fn f() do
@@ -4942,41 +5115,6 @@ test "dotted pub type resolves bare in the same file" {
     , 8080);
 }
 
-test "dotted pub type in .d.rv resolves qualified by import" {
-    var m = try t.TmpMod.init(&.{
-        .{ .path = "shapes.d.rv", .data = "pub type geo.Point = num\n" },
-    });
-    defer m.deinit();
-    try t.topNumberInDir(
-        m.dir,
-        "import \"shapes.d.rv\"\nconst p: shapes.Point = 7\np\n",
-        7,
-    );
-    try t.expectCompileErrorInDir(
-        m.dir,
-        "import \"shapes.d.rv\"\nconst p: shapes.Point = \"x\"\n",
-    );
-}
-
-test "manifest dotted proc macros rescope under the import name" {
-    var m = try t.TmpMod.init(&.{
-        .{ .path = "m.d.rv", .data =
-        \\pub proc q.add3!(iter) do
-        \\  let a = iter:next()
-        \\  let b = iter:next()
-        \\  let c = iter:next()
-        \\  {{:binary, :add, {:binary, :add, a, b}, c}}
-        \\end
-        },
-    });
-    defer m.deinit();
-    try t.topNumberInDir(
-        m.dir,
-        "import \"m.d.rv\"\nm.add3!(10, 20, 10)\n",
-        40,
-    );
-}
-
 test "baselib dotted type resolves qualified, unknown qualified errors" {
     try t.topNumber(
         \\ const u: uri.Uri = { scheme = "https", host = "example.com", path = "/hi/there", query = { "search", "page" = 3 } }
@@ -4990,24 +5128,46 @@ test "baselib dotted type resolves qualified, unknown qualified errors" {
     );
 }
 
-test ".d.rv import typechecks calls and never executes the file" {
+test "a module returning one ascribed table types its members" {
     var m = try t.TmpMod.init(&.{
-        .{ .path = "audio.d.rv", .data = "pub declare ring = fn(volume: num, label: string) -> bool\nundefined_poison()\n" },
+        .{
+            .path = "iface.rv",
+            .data =
+            \\const iface: {
+            \\  add: fn(a: number, b: number) -> number,
+            \\  greet: fn(name: string) -> string,
+            \\} = { add = fn(a, b) a + b, greet = fn(n) "hi #{n}" }
+            \\iface
+            ,
+        },
     });
     defer m.deinit();
-    // build succeeds (semantic extracted the sig); runtime only fails on the
-    // empty module table - the poison call inside the file never ran
-    try t.expectRuntimeErrorInDir(
+
+    // the table is the module, so members carry their declared sigs
+    try t.topNumberInDir(
         m.dir,
-        "import \"audio.d.rv\"\naudio.ring(1, \"x\")\n",
-        .NotAFunction,
+        "const iface = import \"./iface.rv\"\niface.add(3, 4)\n",
+        7,
+    );
+    try t.topStringInDir(
+        m.dir,
+        "const iface = import \"./iface.rv\"\niface.greet(\"you\")\n",
+        "hi you",
+    );
+    // wrong arg type and wrong arity both come from the ascription
+    try t.expectCompileErrorInDir(
+        m.dir,
+        "const iface = import \"./iface.rv\"\niface.add(\"x\", 4)\n",
+    );
+    try t.expectCompileErrorInDir(
+        m.dir,
+        "const iface = import \"./iface.rv\"\niface.add(1)\n",
     );
 }
 
-test "manifest .d.rv types .so imports, sig fallback without one" {
+test ".so imports are untyped on their own" {
     var m = try t.TmpMod.init(&.{
         .{ .path = "fake.so", .data = "" },
-        .{ .path = "fake.d.rv", .data = "pub declare open = fn(path: string) -> string\n" },
     });
     defer m.deinit();
     const source_name = try std.Io.Dir.path.join(std.testing.allocator, &.{ m.dir, "<source>" });
@@ -5015,23 +5175,6 @@ test "manifest .d.rv types .so imports, sig fallback without one" {
 
     const source = "import \"fake.so\"\nfake.open(5)\n";
 
-    // manifest present: the wrong-arg call is a compile error
-    {
-        var vm = try VM.init(t.runtime());
-        defer vm.deinit();
-        vm.import_dir = m.dir;
-        const result = try lang.build(&vm, .{ .name = source_name, .text = source }, .{ .install_debug_info = false });
-        switch (result) {
-            .ok => return error.ExpectedCompileFailure,
-            .err => |f| switch (f) {
-                .semantic, .compile => vm.runtime.resetDiagArena(),
-                .expand, .parse => return error.ExpectedCompileFailure,
-            },
-        }
-    }
-
-    // manifest gone: no sigs to synthesize from, the call compiles untyped
-    try m.tmp.dir.deleteFile(std.testing.io, "fake.d.rv");
     {
         var vm = try VM.init(t.runtime());
         defer vm.deinit();
@@ -5045,4 +5188,197 @@ test "manifest .d.rv types .so imports, sig fallback without one" {
             .err => return error.ExpectedCompileSuccess,
         }
     }
+}
+
+test "repl_mode leaves a function-local let as a local" {
+    try t.topTrueOpts(.{ .repl_mode = true },
+        \\fn find(haystack, needle) do
+        \\    const n = needle:len()
+        \\    let at = -1
+        \\    for i in 0..haystack:len() do
+        \\        if haystack:sub(i, n) == needle do
+        \\            at = i
+        \\            break(:nil)
+        \\        end
+        \\    end
+        \\    return at
+        \\end
+        \\find("hello", "ell") == 1
+    );
+}
+
+const module_with_loop_local =
+    \\pub fn find(haystack, needle) do
+    \\    const n = needle:len()
+    \\    let at = -1
+    \\    for i in 0..haystack:len() do
+    \\        if haystack:sub(i, n) == needle do
+    \\            at = i
+    \\            break(:nil)
+    \\        end
+    \\    end
+    \\    return at
+    \\end
+;
+
+test "a module imported on a repl line parses as a module" {
+    var m = try t.TmpMod.init(&.{.{
+        .path = "mod.rv",
+        .data = module_with_loop_local,
+    }});
+    defer m.deinit();
+
+    try t.topTrueOptsInDir(m.dir, .{ .repl_mode = true },
+        \\import {
+        \\    mod = "mod"
+        \\}
+        \\mod.find("hello", "ell") == 1
+    );
+}
+
+test "repl_mode still promotes a top-level binding to a global" {
+    try t.topTrueOpts(.{ .repl_mode = true },
+        \\let kept = 7
+        \\kept == 7
+    );
+}
+
+test "repl_mode does not leak into a module compiled with default options" {
+    const src =
+        \\import {
+        \\    mod = "stdmod"
+        \\}
+        \\mod.find("hello", "ell") == 1
+    ;
+    var m = try t.TmpMod.init(&.{.{ .path = "stdmod.rv", .data = module_with_loop_local }});
+    defer m.deinit();
+
+    var repl = try t.topResultOpts(src, m.dir, .{ .repl_mode = true });
+    repl.deinit();
+    var plain = try t.topResultOpts(src, m.dir, .{});
+    defer plain.deinit();
+    try std.testing.expect(!revo.isFalse(plain.value));
+}
+
+test "fmt %p does not leak escapes into a non-color host" {
+    var vm = try VM.init(t.runtime());
+    defer vm.deinit();
+    vm.runtime.supports_color = false;
+
+    const src = "const s = fmt(\"%p\", 42)\ns";
+    _ = revo.run.runModule(&vm, "<test>", src, false) catch return error.LangFailure;
+    const out = vm.mainResult();
+    try std.testing.expect(out.isString());
+    try std.testing.expect(std.mem.find(u8, vm.stringValue(out.asString().?), "\x1b[") == null);
+}
+
+test "fmt %p still colorizes when the host wants color" {
+    var vm = try VM.init(t.runtime());
+    defer vm.deinit();
+    vm.runtime.supports_color = true;
+
+    const src = "const s = fmt(\"%p\", 42)\ns";
+    _ = revo.run.runModule(&vm, "<test>", src, false) catch return error.LangFailure;
+    const out = vm.mainResult();
+    try std.testing.expect(out.isString());
+    try std.testing.expect(std.mem.find(u8, vm.stringValue(out.asString().?), "\x1b[") != null);
+}
+
+test "two vms can disagree about color" {
+    var a = try VM.init(t.runtime());
+    defer a.deinit();
+    var b = try VM.init(t.runtime());
+    defer b.deinit();
+
+    try std.testing.expectEqual(a.runtime.supports_color, b.runtime.supports_color);
+    a.runtime.supports_color = false;
+    try std.testing.expectEqual(false, a.runtime.supports_color);
+    try std.testing.expect(b.runtime.supports_color != false or a.runtime.supports_color == b.runtime.supports_color);
+}
+
+test "two vms have independent gensym counters" {
+    var a = try VM.init(t.runtime());
+    defer a.deinit();
+    var b = try VM.init(t.runtime());
+    defer b.deinit();
+
+    a.runtime.gensym_counter = 100;
+    b.runtime.gensym_counter = 500;
+    try std.testing.expectEqual(@as(u64, 100), a.runtime.gensym_counter);
+    try std.testing.expectEqual(@as(u64, 500), b.runtime.gensym_counter);
+
+    a.runtime.gensym_counter += 1;
+    try std.testing.expectEqual(@as(u64, 101), a.runtime.gensym_counter);
+    try std.testing.expectEqual(@as(u64, 500), b.runtime.gensym_counter);
+}
+
+test "two vms have independent stdin buffers" {
+    var a = try VM.init(t.runtime());
+    defer a.deinit();
+    var b = try VM.init(t.runtime());
+    defer b.deinit();
+
+    a.runtime.input_buf[0] = 'x';
+    a.runtime.input_buf_len = 1;
+    try std.testing.expectEqual(@as(usize, 0), b.runtime.input_buf_len);
+    try std.testing.expectEqual(@as(u8, 'x'), a.runtime.input_buf[0]);
+}
+
+test "destructuring assignment" {
+    // rebinds existing locals
+    try t.topTrue(
+        \\let a = 1
+        \\let b = 2
+        \\{a, b} = {3, 4}
+        \\a == 3 and b == 4
+    );
+    // swaps
+    try t.topTrue(
+        \\let a = 5
+        \\let b = 10
+        \\{a, b} = {b, a}
+        \\a == 10 and b == 5
+    );
+    // works inside a function
+    try t.topTrue(
+        \\fn swap() do
+        \\    let a = 1
+        \\    let b = 2
+        \\    {a, b} = {b, a}
+        \\    return a * 10 + b
+        \\end
+        \\swap() == 21
+    );
+    // discards
+    try t.topTrue(
+        \\let a = 1
+        \\{_, a} = {9, 7}
+        \\a == 7
+    );
+    // shape is checked
+    try t.expectCompileFailure(
+        \\let a = 1
+        \\let b = 2
+        \\{a, b} = {3, 4, 5}
+    ,
+        .ParseError,
+        3,
+        10,
+        "table assignment expects 2 items, got 3",
+    );
+    // holds the target type"
+    try t.expectSemanticError(
+        \\let src: {num, num} = {3, 4}
+        \\let a: string = ""
+        \\let b: num = 0
+        \\{a, b} = src
+    );
+    // accepts a matching target type
+    try t.topTrue(
+        \\let src: {num, num} = {3, 4}
+        \\let a: num = 0
+        \\let b: num = 0
+        \\{a, b} = src
+        \\a == 3 and b == 4
+    );
 }

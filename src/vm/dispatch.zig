@@ -1365,7 +1365,7 @@ noinline fn toStringOperand(
     }
     var wbuf = std.Io.Writer.Allocating.init(alloc);
     defer wbuf.deinit();
-    operand.write(&wbuf.writer, self, .plain) catch return null;
+    operand.write(&wbuf.writer, self, .plain, self.runtime.supports_color) catch return null;
     return try wbuf.toOwnedSlice();
 }
 
