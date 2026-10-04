@@ -157,7 +157,7 @@ const Handler = struct {
             } },
         };
         // sanity check in debug builds
-        if (builtin.mode == .Debug) {
+        if (builtin.mode == .debug) {
             lsp.basic_server.validateServerCapabilities(Handler, caps);
         }
         return .{
@@ -671,7 +671,7 @@ const Handler = struct {
 
             const ctfr = switch (tok.type) {
                 .ident => if (lang.identIsFunction(source, tok.end)) tc(.function) else tc(.variable),
-                else => @intFromEnum(tok.type.classify() orelse .variable),
+                else => @backingInt(tok.type.classify() orelse .variable),
             };
 
             const type_idx = if (ast_map) |m|
@@ -691,7 +691,7 @@ const Handler = struct {
 //
 
 fn tc(cls: lang.TokenClass) u32 {
-    return @intFromEnum(cls);
+    return @backingInt(cls);
 }
 
 fn interpEnd(source: []const u8, start: usize, bound: usize) ?usize {
@@ -827,7 +827,7 @@ fn emitSubTokens(
         if (st.type == .eof) break;
         const ctfr = switch (st.type) {
             .ident => if (lang.identIsFunction(body, st.end - body_start)) tc(.function) else tc(.variable),
-            else => @intFromEnum(st.type.classify() orelse .variable),
+            else => @backingInt(st.type.classify() orelse .variable),
         };
         emitSemanticToken(data, prev_line, prev_col, st.start, st.end, ctfr, source, enc);
     }
@@ -940,7 +940,7 @@ fn reportToDiags(arena: std.mem.Allocator, report: lang.diagnostic.Report, uri: 
                 .range = range,
                 .severity = sev,
                 .code = code,
-                .message = message,
+                .message = .{ .string = message },
                 .source = "revo",
                 .tags = if (cur_tag) |t| try arena.dupe(T.Diagnostic.Tag, &.{t}) else &.{},
                 .relatedInformation = try cur_related.toOwnedSlice(arena),

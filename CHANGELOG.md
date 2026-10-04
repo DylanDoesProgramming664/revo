@@ -493,7 +493,7 @@ big release - many misc bugs are fixed but not noted
 
 **full changelog**: <https://github.com/if-not-nil/revo/compare/0.1.1...0.1.2>
 
-> binaries are statically linked with musl when possible (this is why their sizes can reach >4mb). compile with `zig build -Doptimize=ReleaseSafe -Ddynamic` if you need a dynamically linked binary
+> binaries are statically linked with musl when possible (this is why their sizes can reach >4mb). compile with `zig build -Doptimize=safe -Ddynamic` if you need a dynamically linked binary
 
 ## [0.1.1] - 2026-08-10
 

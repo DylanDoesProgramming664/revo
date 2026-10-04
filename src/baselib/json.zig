@@ -8,7 +8,7 @@ pub const Impl = struct {
     }
 
     pub fn decode(vm: *VM, source: Args.string) !HostResult {
-        const str = vm.stringValue(@intFromEnum(source));
+        const str = vm.stringValue(@backingInt(source));
         var parsed = json.parseFromSlice(json.Value, vm.runtime.alloc, str, .{}) catch |err| {
             return HostResult.Err(vm, @errorName(err));
         };

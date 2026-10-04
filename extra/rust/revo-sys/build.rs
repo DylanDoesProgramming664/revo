@@ -6,7 +6,7 @@ fn check_zig_version() {
     let out = Command::new("zig")
         .arg("version")
         .output()
-        .expect("`zig` not found in PATH (revo-sys needs zig 0.16 to build liberevo)");
+        .expect("`zig` not found in PATH (revo-sys needs zig 0.17 to build liberevo)");
     let version = String::from_utf8_lossy(&out.stdout);
     let mut nums = version
         .trim()
@@ -15,7 +15,7 @@ fn check_zig_version() {
         .filter_map(|s| s.parse::<u64>().ok());
     let (major, minor) = (nums.next().unwrap_or(0), nums.next().unwrap_or(0));
     if (major, minor) < (0, 16) {
-        panic!("revo-sys needs zig >= 0.16, found `{}`", version.trim());
+        panic!("revo-sys needs zig >= 0.17, found `{}`", version.trim());
     }
 }
 

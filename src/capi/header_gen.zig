@@ -90,7 +90,7 @@ pub fn data(gpa: Allocator, version: []const u8) ![]u8 {
 /// emits every exported `callconv(.c)` fn with the module's prefix, in source order
 /// (so you control grouping by ordering the zig source)
 fn renderModule(arena: Allocator, m: Module) ![]const u8 {
-    var ast = try Ast.parse(arena, m.src, .zig);
+    var ast = try Ast.parse(arena, m.src, .{ .mode = .zig });
     defer ast.deinit(arena);
     if (ast.errors.len > 0) {
         for (ast.errors) |e| {

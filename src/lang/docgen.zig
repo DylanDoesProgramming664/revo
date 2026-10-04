@@ -16,7 +16,6 @@ const dim = "\x1b[2m";
 const reset = "\x1b[0m";
 const cyan = "\x1b[36m";
 const magenta = "\x1b[35m";
-const blue = "\x1b[34m";
 const yellow = "\x1b[33m";
 
 fn style(w: *Writer, code: []const u8, color: bool) !void {

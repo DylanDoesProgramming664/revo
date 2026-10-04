@@ -237,11 +237,6 @@ pub const Table = struct {
             return self.buckets[idx].value;
         }
 
-        fn getPtr(self: *HashPart, key: Value, vm: *revo.VM) ?*Value {
-            const idx = self.lookup(key, vm) orelse return null;
-            return &self.buckets[idx].value;
-        }
-
         fn getOrPut(self: *HashPart, alloc: std.mem.Allocator, key: Value, vm: *revo.VM) !*Value {
             if (self.buckets.len == 0 or self.count * 100 > self.buckets.len * MAX_LOAD)
                 try self.grow(alloc, vm);
@@ -377,12 +372,6 @@ pub const Table = struct {
             const val = self.get(key, vm) orelse return null;
             _ = self.remove(key, vm);
             return val;
-        }
-
-        fn clone(self: *const HashPart, alloc: std.mem.Allocator) !HashPart {
-            if (self.buckets.len == 0) return .{};
-            const cp = try alloc.dupe(Bucket, self.buckets);
-            return .{ .buckets = cp, .count = self.count, .first = self.first, .last = self.last };
         }
 
         pub const OrderedIter = struct {

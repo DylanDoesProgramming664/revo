@@ -30,7 +30,7 @@ pub const Impl = struct {
         _ = recursive;
         _ = depth_limit;
 
-        const extracted_pattern = vm.stringValue(@intFromEnum(pattern));
+        const extracted_pattern = vm.stringValue(@backingInt(pattern));
 
         const pattern_ = try vm.runtime.alloc.alloc(u8, extracted_pattern.len);
         defer vm.runtime.alloc.free(pattern_);
@@ -93,7 +93,7 @@ pub const Impl = struct {
     }
 
     pub fn @"fs.exists?"(vm: *VM, path: Args.string) !HostResult {
-        const expanded = expandPath(vm, vm.stringValue(@intFromEnum(path))) catch |err| return progErr(err);
+        const expanded = expandPath(vm, vm.stringValue(@backingInt(path))) catch |err| return progErr(err);
         defer vm.runtime.alloc.free(expanded);
 
         probe(vm, expanded) catch |err| switch (err) {
@@ -105,7 +105,7 @@ pub const Impl = struct {
     }
 
     pub fn @"fs.remove"(vm: *VM, path: Args.string, recursive: Args.Optional(.bool, false)) !HostResult {
-        const expanded = expandPath(vm, vm.stringValue(@intFromEnum(path))) catch |err| return progErr(err);
+        const expanded = expandPath(vm, vm.stringValue(@backingInt(path))) catch |err| return progErr(err);
         defer vm.runtime.alloc.free(expanded);
 
         if (recursive.value) {
@@ -125,7 +125,7 @@ pub const Impl = struct {
     }
 
     pub fn @"fs.mkdir"(vm: *VM, path: Args.string, parents: Args.Optional(.bool, false), permissions: Args.Optional(.number, dir_default)) !HostResult {
-        const expanded = expandPath(vm, vm.stringValue(@intFromEnum(path))) catch |err| return progErr(err);
+        const expanded = expandPath(vm, vm.stringValue(@backingInt(path))) catch |err| return progErr(err);
         defer vm.runtime.alloc.free(expanded);
 
         const perms = numPermissions(permissions.value) catch return .errType(1, "integer permissions", "number");
@@ -140,7 +140,7 @@ pub const Impl = struct {
     }
 
     pub fn @"fs.touch"(vm: *VM, path: Args.string) !HostResult {
-        const expanded = expandPath(vm, vm.stringValue(@intFromEnum(path))) catch |err| return progErr(err);
+        const expanded = expandPath(vm, vm.stringValue(@backingInt(path))) catch |err| return progErr(err);
         defer vm.runtime.alloc.free(expanded);
 
         if (probe(vm, expanded)) {
@@ -162,9 +162,9 @@ pub const Impl = struct {
     }
 
     pub fn @"fs.copy"(vm: *VM, src: Args.string, dst: Args.string) !HostResult {
-        const from = expandPath(vm, vm.stringValue(@intFromEnum(src))) catch |err| return progErr(err);
+        const from = expandPath(vm, vm.stringValue(@backingInt(src))) catch |err| return progErr(err);
         defer vm.runtime.alloc.free(from);
-        const to = expandPath(vm, vm.stringValue(@intFromEnum(dst))) catch |err| return progErr(err);
+        const to = expandPath(vm, vm.stringValue(@backingInt(dst))) catch |err| return progErr(err);
         defer vm.runtime.alloc.free(to);
 
         const st = try Dir.cwd().statFile(vm.runtime.io, from, .{});
@@ -176,9 +176,9 @@ pub const Impl = struct {
     }
 
     pub fn @"fs.rename"(vm: *VM, old_path: Args.string, new_path: Args.string) !HostResult {
-        const old = expandPath(vm, vm.stringValue(@intFromEnum(old_path))) catch |err| return progErr(err);
+        const old = expandPath(vm, vm.stringValue(@backingInt(old_path))) catch |err| return progErr(err);
         defer vm.runtime.alloc.free(old);
-        const new = expandPath(vm, vm.stringValue(@intFromEnum(new_path))) catch |err| return progErr(err);
+        const new = expandPath(vm, vm.stringValue(@backingInt(new_path))) catch |err| return progErr(err);
         defer vm.runtime.alloc.free(new);
 
         try Dir.cwd().rename(old, Dir.cwd(), new, vm.runtime.io);
@@ -187,7 +187,7 @@ pub const Impl = struct {
     }
 
     pub fn @"file.read"(vm: *VM, self: Args.table) !HostResult {
-        const this = Value.new.table(@intFromEnum(self));
+        const this = Value.new.table(@backingInt(self));
         const handle = parseFileHandle(this, vm) catch |err| return progErr(err);
 
         const path = try vm.runtime.alloc.dupe(u8, handle.path);
@@ -212,13 +212,13 @@ pub const Impl = struct {
     }
 
     pub fn @"file.write"(vm: *VM, self: Args.table, data: Args.string, append: Args.Optional(.bool, false), permissions: Args.Optional(.number, file_default)) !HostResult {
-        const this = Value.new.table(@intFromEnum(self));
+        const this = Value.new.table(@backingInt(self));
         const handle = parseFileHandle(this, vm) catch |err| return progErr(err);
         const perms = numPermissions(permissions.value) catch return .errType(2, "integer permissions", "number");
 
         const path = try vm.runtime.alloc.dupe(u8, handle.path);
         defer vm.runtime.alloc.free(path);
-        const text = try vm.runtime.alloc.dupe(u8, vm.stringValue(@intFromEnum(data)));
+        const text = try vm.runtime.alloc.dupe(u8, vm.stringValue(@backingInt(data)));
         defer vm.runtime.alloc.free(text);
 
         const depth = revo.vm.dispatch.gilDropForBlocking(vm);
@@ -252,7 +252,7 @@ pub const Impl = struct {
     pub const @"file.stat" = statImpl(Args.table);
 
     pub fn @"file.close"(vm: *VM, self: Args.table) !HostResult {
-        const this = Value.new.table(@intFromEnum(self));
+        const this = Value.new.table(@backingInt(self));
         _ = parseFileHandle(this, vm) catch |err| return progErr(err);
         return .Ok(vm, revo.Value.new.core(.ok));
     }
@@ -316,9 +316,9 @@ fn selfPath(vm: *VM, self: anytype) ![]const u8 {
     const T = @TypeOf(self);
     if (comptime T != Args.string and T != Args.table) @compileError("fs path or handle expected");
     if (T == Args.string) {
-        return vm.stringValue(@intFromEnum(self));
+        return vm.stringValue(@backingInt(self));
     } else {
-        return (try parseFileHandle(Value.new.table(@intFromEnum(self)), vm)).path;
+        return (try parseFileHandle(Value.new.table(@backingInt(self)), vm)).path;
     }
 }
 
@@ -351,13 +351,6 @@ fn progErr(err: anyerror) HostResult {
 // -- [helpers] ---------------------------------------------------------------
 
 // Anything that isn't a pattern
-inline fn isIdent(pattern: []const u8) bool {
-    for (pattern) |ch|
-        if (!std.ascii.isAlphanumeric(ch))
-            return false;
-
-    return true;
-}
 
 fn expandPath(vm: *VM, path: []const u8) ![]u8 {
     if (path.len == 0 or path[0] != '~') return vm.runtime.alloc.dupe(u8, path);
@@ -378,7 +371,7 @@ fn expandPath(vm: *VM, path: []const u8) ![]u8 {
 fn numPermissions(n: f64) !File.Permissions {
     if (!std.math.isFinite(n) or @floor(n) != n) return error.InvalidPermissions;
     const raw: PermTag = @intFromFloat(n);
-    return @as(File.Permissions, @enumFromInt(raw));
+    return @as(File.Permissions, @fromBackingInt(@intCast(raw)));
 }
 
 fn probe(vm: *VM, path: []const u8) !void {
@@ -457,7 +450,7 @@ fn makeStatTable(vm: *VM, stat: File.Stat) !Value {
 
     try vm.putField(table, "size", Value.new.num(stat.size));
     try vm.putField(table, "kind", try vm.atomValue(@tagName(stat.kind)));
-    try vm.putField(table, "permissions", Value.new.num(@intFromEnum(stat.permissions)));
+    try vm.putField(table, "permissions", Value.new.num(@backingInt(stat.permissions)));
     try vm.putField(table, "mtime", Value.new.num(stat.mtime.toSeconds()));
     try vm.putField(table, "atime", Value.new.num((stat.atime orelse stat.mtime).toSeconds()));
     try vm.putField(table, "ctime", Value.new.num(stat.ctime.toSeconds()));

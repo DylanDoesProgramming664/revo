@@ -12,7 +12,7 @@
 const builtin = @import("builtin");
 const std = @import("std");
 
-const c = @cImport(@cInclude("ffi.h"));
+const c = @import("c_ffi");
 const revo = @import("../root.zig");
 const Value = revo.Value;
 const VM = revo.VM;
@@ -23,6 +23,7 @@ const fdesc = @import("ffi.zig");
 
 extern "c" fn __errno_location() *c_int;
 extern "c" fn __error() *c_int;
+extern "c" fn __errno() *c_int;
 
 const max_args = 16;
 const type_names = "i32|u32|i64|u64|f32|f64|bool|ptr|void|string";
@@ -42,8 +43,8 @@ const Box = struct {
     nargs: usize = 0,
     fixed: usize = 0,
 
-    arg_t: [max_args]*c.ffi_type = .{undefined} ** max_args,
-    types: [max_args]fdesc.FfiType = .{.void} ** max_args,
+    arg_t: [max_args]*c.ffi_type = undefined,
+    types: [max_args]fdesc.FfiType = @splat(.void),
     cif: c.ffi_cif = std.mem.zeroes(c.ffi_cif),
 };
 
@@ -140,8 +141,8 @@ fn ffiCallFn(args: []const Value, vm: *VM) !HostResult {
         use_cif = &stack_cif;
     }
 
-    var slots: [max_args]u64 = .{0} ** max_args;
-    var ptrs: [max_args]?*anyopaque = .{null} ** max_args;
+    var slots: [max_args]u64 = @splat(0);
+    var ptrs: [max_args]?*anyopaque = @splat(null);
     var strbufs: [max_args][]u8 = undefined;
     var nstr: usize = 0;
     defer for (strbufs[0..nstr]) |s| vm.runtime.alloc.free(s);
@@ -210,7 +211,8 @@ fn ffiCallFn(args: []const Value, vm: *VM) !HostResult {
     var retbuf: u64 = 0;
     c.ffi_call(use_cif, @ptrCast(@alignCast(box.sym.?)), &retbuf, &ptrs);
     vm.ffi_errno = switch (builtin.target.os.tag) {
-        .macos, .freebsd, .openbsd => __error().*,
+        .macos, .ios, .tvos, .watchos, .visionos, .freebsd => __error().*,
+        .openbsd, .netbsd => __errno().*,
         else => __errno_location().*,
     };
 
@@ -341,7 +343,7 @@ fn finishLoad(vm: *VM, lib: std.DynLib) !HostResult {
 
 pub const Impl = struct {
     pub fn load(vm: *VM, path: Args.string) !HostResult {
-        const bytes = vm.stringValue(@intFromEnum(path));
+        const bytes = vm.stringValue(@backingInt(path));
 
         // empty path opens the process itself
         //   (libc is here on every posix target, no paths to guess)
@@ -406,16 +408,16 @@ fn declare(
     if (lib_box.kind != .lib) return .errType(0, "ffi lib handle", root.typeof(lib_v, vm));
     const lib = &vm.loaded_extensions.items[lib_box.lib_index];
 
-    const name = vm.stringValue(@intFromEnum(name_v));
+    const name = vm.stringValue(@backingInt(name_v));
     const zname = try vm.runtime.alloc.dupeSentinel(u8, name, 0);
     defer vm.runtime.alloc.free(zname);
     const sym = lib.lookup(*anyopaque, zname) orelse return .errImportFailed("symbol not found");
 
-    const ret_atom = Value.new.atom(@intFromEnum(ret_v));
+    const ret_atom = Value.new.atom(@backingInt(ret_v));
     const ret = parseType(vm, ret_atom) orelse
         return .errType(2, type_names, root.typeof(ret_atom, vm));
 
-    const arg_tid = @intFromEnum(args_v);
+    const arg_tid = @backingInt(args_v);
     const arg_tbl = try vm.tables.get(arg_tid);
     const nargs = arg_tbl.array.items.len;
     const total_n = total orelse nargs;

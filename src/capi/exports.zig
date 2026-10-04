@@ -46,7 +46,7 @@ pub export fn revo_getglobal(vm_ptr: *anyopaque, name: ?[*]const u8, name_len: u
         return nil_val;
 
     // getGlobal returns :undef for missing names instead of null
-    if (value.tag() == .atom and value.asAtom().? == @intFromEnum(revo.CoreAtoms.undef))
+    if (value.tag() == .atom and value.asAtom().? == @backingInt(revo.CoreAtoms.undef))
         return nil_val;
 
     return value;

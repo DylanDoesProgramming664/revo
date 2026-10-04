@@ -7,7 +7,6 @@ const Value = revo.Value;
 const VM = revo.VM;
 const HostResult = root.host.HostResult;
 
-const Uri = std.Uri;
 const Client = std.http.Client;
 const Table = revo.table.Table;
 const Header = std.http.Header;
@@ -26,7 +25,7 @@ pub const Impl = struct {
             .err => |e| return HostResult{ .err = e },
             .value => |v| v,
         };
-        const redirects: ?u16 = switch (try buildMaxRedirects(Value.new.table(@intFromEnum(opts.value)), vm)) {
+        const redirects: ?u16 = switch (try buildMaxRedirects(Value.new.table(@backingInt(opts.value)), vm)) {
             .err => |e| return HostResult{ .err = e },
             .value => |v| v,
         };
@@ -88,7 +87,7 @@ pub const Impl = struct {
 
         const status = try vm.tableOfSlice(&[_]Value{
             Value.new.atom(result_atom),
-            Value.new.num(@as(usize, @intFromEnum(response.status))),
+            Value.new.num(@as(usize, @backingInt(response.status))),
         });
 
         const id = try vm.tables.create();
@@ -104,7 +103,7 @@ pub const Impl = struct {
 pub const impls = root.host.impls(Impl).val;
 
 fn buildMethod(raw_method: Args.atom, vm: *VM) !Method {
-    const m = vm.stringValue(@intFromEnum(raw_method));
+    const m = vm.stringValue(@backingInt(raw_method));
 
     var buf: [16]u8 = undefined;
     if (m.len > buf.len) return error.InvalidMethod;
@@ -139,10 +138,10 @@ fn buildMaxRedirects(options: Value, vm: *VM) !HostErrOr(?u16) {
 fn buildHeaders(options: Args.table, extra_headers: *std.ArrayList(std.http.Header), vm: *VM) !HostErrOr(std.http.Client.Request.Headers) {
     var headers = std.http.Client.Request.Headers{};
 
-    const opts_id: usize = @intFromEnum(options);
+    const opts_id: usize = @backingInt(options);
     if (!vm.tables.isValid(opts_id)) return .{ .value = headers };
 
-    if (vm.getField(Value.new.table(@intFromEnum(options)), "headers")) |id| {
+    if (vm.getField(Value.new.table(@backingInt(options)), "headers")) |id| {
         if (id.asTable()) |table_id| {
             if (!vm.tables.isValid(table_id)) return .{ .value = headers };
             var table: *Table = try vm.tables.get(table_id);
@@ -187,10 +186,10 @@ fn buildBody(method: Method, opts: Args.table, vm: *VM) !?Body {
     if (!method.requestHasBody()) {
         return null;
     }
-    const opts_id: usize = @intFromEnum(opts);
+    const opts_id: usize = @backingInt(opts);
     if (!vm.tables.isValid(opts_id)) return null;
 
-    if (vm.getField(Value.new.table(@intFromEnum(opts)), "body")) |id| {
+    if (vm.getField(Value.new.table(@backingInt(opts)), "body")) |id| {
         // explicit :nil is rejected (omit the key instead); anything else
         // non-string is json, the default content-type is json too (TODO detect it)
         if (id.asAtom()) |a| {

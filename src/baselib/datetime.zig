@@ -193,7 +193,6 @@ const assert = std.debug.assert;
 const time = std.time;
 
 const revo = @import("../root.zig");
-const Value = revo.Value;
 const VM = revo.VM;
 const root = @import("root.zig");
 const HostResult = root.host.HostResult;

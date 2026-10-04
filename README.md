@@ -28,7 +28,7 @@ however, this project is rapidly changing. i recommend you build from source ins
 
 ## install from source
 
-you need [zig](https://ziglang.org/download) `0.16.0` to build revo
+you need [zig](https://ziglang.org/download) `0.17.0` to build revo
 
 i also recommend the [anyzig](https://github.com/marler8997/anyzig) version manager
 
@@ -38,9 +38,9 @@ i also recommend the [anyzig](https://github.com/marler8997/anyzig) version mana
 git clone https://github.com/if-not-nil/revo --recursive && cd revo
 git submodule update --init --recursive
 zig build --fetch
-zig build -Doptimize=ReleaseSafe
-                  # =ReleaseSmall for a ~1mb executable
-                  # =ReleaseFast  for a ~5%-10% performance gain (harder to report bugs on)
+zig build -Doptimize=safe
+                  # =small for a ~1mb executable
+                  # =fast  for a ~5%-10% performance gain (harder to report bugs on)
 cp ./zig-out/bin/revo ~/.local/bin/revo
 
 revo
@@ -59,7 +59,7 @@ there is also a function that bundles a revo script into a nix package
 
 ```bash
 git clone https://github.com/if-not-nil/revo && cd revo
-zig build --fetch -Doptimize=ReleaseFast
+zig build --fetch -Doptimize=fast
 
 mkdir "C:/tools/revo/bin"
 copy ./zig-out/bin/revo C:/tools/revo/bin

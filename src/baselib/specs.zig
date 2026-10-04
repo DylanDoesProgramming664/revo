@@ -27,6 +27,7 @@ const HostFunc = root.host.HostFunc;
 
 pub const regex_on = @import("build_options").regex;
 pub const ffi_on = @import("build_options").ffi;
+pub const http_on = !revo.is_freestanding;
 
 /// the zig side of one spec: registry key + implementation
 pub const Impl = struct {
@@ -67,7 +68,7 @@ pub const groups: []const Group = &.{
         @import("time.zig").impls,
         @import("datetime.zig").impls,
         @import("net.zig").impls,
-        @import("http.zig").impls,
+        if (http_on) @import("http.zig").impls else &.{},
         @import("uri.zig").impls,
         @import("fs.zig").impls,
         @import("revo.zig").impls,
@@ -104,8 +105,6 @@ pub fn loadAllSpecs(caller_alloc: std.mem.Allocator) ![]const []const FnSpec {
                 std.debug.print("iface group '{s}' failed to parse: {s}\n", .{ ig.name, @errorName(err) });
             return err;
         };
-        // compiled-out modules (re/ffi) stay out of every surface instead of
-        // erroring; the old skip-empty-group rule, now spec-level
         specs = try dropDisabledModules(pa, specs);
         for (specs, 0..) |*s, i| {
             if (s.is_type) continue;
@@ -307,7 +306,8 @@ fn dropDisabledModules(alloc: std.mem.Allocator, specs: []FnSpec) ![]FnSpec {
     for (specs) |s| {
         const disabled = s.head.kind == .namespaced and s.head.module != null and
             ((std.mem.eql(u8, s.head.module.?, "re") and !regex_on) or
-                (std.mem.eql(u8, s.head.module.?, "ffi") and !ffi_on));
+                (std.mem.eql(u8, s.head.module.?, "ffi") and !ffi_on) or
+                (std.mem.eql(u8, s.head.module.?, "http") and !http_on));
         if (disabled) {
             s.deinit(alloc);
             continue;
@@ -873,7 +873,7 @@ pub fn registerAll(
             if (has_meta) {
                 const mt_id = try vm.tables.create();
                 for (entry.value_ptr.items) |f| {
-                    if (f.atom) |atom| try vm.putInTable(mt_id, @intFromEnum(atom), f.fn_id);
+                    if (f.atom) |atom| try vm.putInTable(mt_id, @backingInt(atom), f.fn_id);
                 }
                 try vm.setMetatable(Value.new.table(table_id), mt_id);
             }

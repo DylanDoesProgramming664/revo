@@ -16,7 +16,7 @@ const Impl = struct {
     pub fn zecho(vm: *VM, s: Args.string) !HostResult {
         _ = vm;
         // ids pass through as-is, no re-intern needed
-        return .data(Value.new.str(@intFromEnum(s)));
+        return .data(Value.new.str(@backingInt(s)));
     }
 
     pub fn zsetglobal(vm: *VM, name: Args.string, value: Args.any) !HostResult {
@@ -26,7 +26,7 @@ const Impl = struct {
 
     pub fn zconcat(vm: *VM, parts: Args.table, sep: Args.string) !HostResult {
         const separator = extension.str(vm, sep);
-        const tab = try vm.tables.get(@intFromEnum(parts));
+        const tab = try vm.tables.get(@backingInt(parts));
 
         var buf = try std.ArrayList(u8).initCapacity(vm.runtime.alloc, 32);
         defer buf.deinit(vm.runtime.alloc);

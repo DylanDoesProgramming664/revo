@@ -17,10 +17,10 @@ dead: std.ArrayList(memory.StringID),
 by_name: std.StringHashMap(memory.StringID),
 
 pub fn init(alloc: std.mem.Allocator) !Interner {
-    const CoreAtoms_fields = @typeInfo(revo.CoreAtoms).@"enum".fields;
+    const core_atom_names = @typeInfo(revo.CoreAtoms).@"enum".field_names;
     var self = Interner{
         .alloc = alloc,
-        .slots = try std.ArrayList(?[]u8).initCapacity(alloc, CoreAtoms_fields.len),
+        .slots = try std.ArrayList(?[]u8).initCapacity(alloc, core_atom_names.len),
         .marks = try std.DynamicBitSet.initEmpty(alloc, 64),
         .dead = .empty,
         .by_name = std.StringHashMap(memory.StringID).init(alloc),
@@ -28,8 +28,8 @@ pub fn init(alloc: std.mem.Allocator) !Interner {
     errdefer self.slots.deinit(alloc);
     errdefer self.marks.deinit();
 
-    inline for (CoreAtoms_fields) |field| {
-        _ = try self.own(field.name);
+    inline for (core_atom_names) |atom_name| {
+        _ = try self.own(atom_name);
     }
     return self;
 }

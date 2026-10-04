@@ -48,7 +48,7 @@
         revo-small = final.revo.overrideAttrs {
           zigBuildFlags = [
             "-Dfeatures="
-            "-Doptimize=ReleaseSmall"
+            "-Doptimize=small"
           ];
         };
 

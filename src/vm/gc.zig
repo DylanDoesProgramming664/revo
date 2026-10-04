@@ -206,9 +206,9 @@ pub inline fn markRoots(self: *VM) void {
         self.strings.mark(entry.value_ptr.*);
     }
 
-    inline for (@typeInfo(revo.CoreAtoms).@"enum".fields) |field| {
-        const atom_id: revo.AtomID = @intFromEnum(
-            @field(revo.CoreAtoms, field.name),
+    inline for (@typeInfo(revo.CoreAtoms).@"enum".field_names) |field_name| {
+        const atom_id: revo.AtomID = @backingInt(
+            @field(revo.CoreAtoms, field_name),
         );
         self.strings.mark(atom_id);
     }

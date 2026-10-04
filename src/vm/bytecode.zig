@@ -59,7 +59,7 @@ fn writeIntLE(buffer: *std.ArrayList(u8), allocator: Allocator, comptime IntType
 }
 
 fn serializeValue(buffer: *std.ArrayList(u8), allocator: Allocator, vm: *VM, item: memory.Value) anyerror!void {
-    try writeIntLE(buffer, allocator, u8, @intFromEnum(item.tag()));
+    try writeIntLE(buffer, allocator, u8, @backingInt(item.tag()));
     switch (item.tag()) {
         .number => try writeIntLE(buffer, allocator, u64, @bitCast(item.asNumOpt().?)),
         .string => {
@@ -157,26 +157,26 @@ pub fn serialize(vm: *VM, bytecode: Bytecode, allocator: Allocator) ![]u8 {
 fn readValue(vm: *VM, reader: *std.Io.Reader) anyerror!memory.Value {
     const tag = (try reader.takeArray(1))[0];
     return switch (tag) {
-        @intFromEnum(memory.ValueTag.number) => blk: {
+        @backingInt(memory.ValueTag.number) => blk: {
             const bits = std.mem.readInt(u64, try reader.takeArray(8), .little);
             break :blk memory.Value.new.num(@as(f64, @bitCast(bits)));
         },
-        @intFromEnum(memory.ValueTag.string) => blk: {
+        @backingInt(memory.ValueTag.string) => blk: {
             const len = std.mem.readInt(u64, try reader.takeArray(8), .little);
             const str = try reader.take(@intCast(len));
             break :blk try vm.ownValueString(str);
         },
-        @intFromEnum(memory.ValueTag.atom) => blk: {
+        @backingInt(memory.ValueTag.atom) => blk: {
             const len = std.mem.readInt(u64, try reader.takeArray(8), .little);
             const str = try reader.take(@intCast(len));
             const id = try vm.internAtom(str);
             break :blk memory.Value.new.atom(id);
         },
-        @intFromEnum(memory.ValueTag.function) => blk: {
+        @backingInt(memory.ValueTag.function) => blk: {
             const fid = std.mem.readInt(u64, try reader.takeArray(8), .little);
             break :blk memory.Value.new.function(@intCast(fid));
         },
-        @intFromEnum(memory.ValueTag.table) => blk: {
+        @backingInt(memory.ValueTag.table) => blk: {
             const tid = std.mem.readInt(u64, try reader.takeArray(8), .little);
             break :blk memory.Value.new.table(@intCast(tid));
         },

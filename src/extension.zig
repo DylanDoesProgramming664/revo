@@ -67,7 +67,7 @@ pub fn binding(comptime name: [:0]const u8, comptime f: HostFunc) revo.callable.
         if (f.arity > max_params) @compileError("extension binding arity exceeds 16");
         if (f.param_types.len > max_params) @compileError("extension binding param_types exceeds 16");
     }
-    var tags: [max_params]u8 = .{HB.end} ** max_params;
+    var tags: [max_params]u8 = @splat(HB.end);
     comptime var i: usize = 0;
     inline for (f.param_types) |spec| {
         // through a value: `Type.variant.method()` would resolve
@@ -117,7 +117,7 @@ pub fn bindingsFor(comptime S: type) [(impls(S).val.len) + 1]revo.callable.HostB
 ///
 /// copy it when holding across allocations
 pub fn str(vm: *VM, s: ArgTypes.string) []const u8 {
-    return vm.stringValue(@intFromEnum(s));
+    return vm.stringValue(@backingInt(s));
 }
 
 /// nul-terminated copy of a `ArgTypes.string` arg for C interop; free with `freeZstr`
@@ -239,7 +239,7 @@ test bindings {
 test "resource binding tag" {
     const S = struct {
         fn f(_: *VM, h: ArgTypes.resource) !HostResult {
-            return .data(Value.new.resource(@intFromEnum(h)));
+            return .data(Value.new.resource(@backingInt(h)));
         }
     };
     const f = def(S.f);

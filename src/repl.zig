@@ -8,7 +8,7 @@ const VM = revo.VM;
 const isocline_c = if (builtin.link_libc) @import("isocline") else struct {};
 
 const signal_c = if (build_options.isocline and builtin.link_libc)
-    @cImport(@cInclude("signal.h"))
+    @import("c_signal")
 else
     struct {};
 
@@ -108,7 +108,7 @@ fn isoclineCompleter(cenv: ?*isocline_c.ic_completion_env_t, prefix: [*c]const u
     };
     for (commands) |cmd| {
         if (std.mem.startsWith(u8, cmd, upto)) {
-            const cmd_c = alloc.dupeZ(u8, cmd) catch continue;
+            const cmd_c = alloc.dupeSentinel(u8, cmd, 0) catch continue;
             _ = isocline_c.ic_add_completion_prim(cenv, cmd_c.ptr, cmd_c.ptr, null, @intCast(plen), 0);
         }
     }
@@ -120,9 +120,9 @@ fn isoclineCompleter(cenv: ?*isocline_c.ic_completion_env_t, prefix: [*c]const u
     const delete_before: c_long = @intCast(upto.len - start);
 
     for (completions) |item| {
-        const rep_c = alloc.dupeZ(u8, item.label) catch continue;
-        const disp_c = if (item.detail) |d| alloc.dupeZ(u8, d) catch continue else rep_c;
-        const help_c: [*c]const u8 = if (item.documentation) |d| alloc.dupeZ(u8, d) catch null else null;
+        const rep_c = alloc.dupeSentinel(u8, item.label, 0) catch continue;
+        const disp_c = if (item.detail) |d| alloc.dupeSentinel(u8, d, 0) catch continue else rep_c;
+        const help_c: [*c]const u8 = if (item.documentation) |d| alloc.dupeSentinel(u8, d, 0) catch null else null;
         _ = isocline_c.ic_add_completion_prim(cenv, rep_c.ptr, disp_c.ptr, help_c, delete_before, 0);
     }
 }
@@ -160,7 +160,7 @@ fn isoclineHighlighter(henv: ?*isocline_c.ic_highlight_env_t, input: [*c]const u
         const ast_type: ?u32 = if (ast_map) |m| m.get(tstart) else null;
 
         const style: ?[]const u8 = if (ast_type) |t|
-            switch (@as(revo.lang.TokenClass, @enumFromInt(t))) {
+            switch (@as(revo.lang.TokenClass, @fromBackingInt(@intCast(t)))) {
                 .variable => null,
                 .enum_member => "hash",
                 else => |e| @tagName(e),

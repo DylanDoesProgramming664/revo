@@ -1135,14 +1135,16 @@ pub fn walkAST(comptime Visitor: type, visitor: *Visitor, node: *const Node) voi
                 return;
             }
 
-            const type_info = @typeInfo(ExprType);
-            if (type_info != .@"struct" and type_info != .@"union") return;
+            const field_names, const field_types = switch (@typeInfo(ExprType)) {
+                .@"struct" => |s| .{ s.field_names, s.field_types },
+                .@"union" => |u| .{ u.field_names, u.field_types },
+                else => return,
+            };
 
-            inline for (std.meta.fields(ExprType)) |field| {
+            inline for (field_names, field_types) |field_name, FieldType| {
                 if (@hasField(Visitor, "found") and visitor.found) return;
 
-                const FieldType = field.type;
-                const value = @field(payload, field.name);
+                const value = @field(payload, field_name);
 
                 switch (FieldType) {
                     *Node => {

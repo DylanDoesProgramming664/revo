@@ -206,7 +206,7 @@ pub const HostResult = union(enum) {
     }
 
     pub fn coreAtom(a: revo.CoreAtoms) HostResult {
-        return .{ .ok = Value.new.atom(@intFromEnum(a)) };
+        return .{ .ok = Value.new.atom(@backingInt(a)) };
     }
 
     pub fn Ok(vm: *VM, value: Value) !HostResult {
@@ -301,7 +301,7 @@ pub const ArgTypes = struct {
     pub const any = Value;
 
     /// optional table parameter
-    pub const table_sentinel = Optional(.table, @as(ArgTypes.table, @enumFromInt(0)));
+    pub const table_sentinel = Optional(.table, @as(ArgTypes.table, @fromBackingInt(@intCast(0))));
 
     /// usage: `ArgTypes.Optional(.bool, false)`, `ArgTypes.Optional(.number, 10.0)`
     pub fn Optional(comptime spec: ParamType, comptime default_val: anytype) type {
@@ -336,11 +336,11 @@ pub fn typeToParam(comptime P: type) ParamType {
 pub fn unwrapArg(comptime spec: ParamType, data: Value) paramToType(spec) {
     return switch (spec) {
         .number => data.asNumOpt().?,
-        .string => @enumFromInt(data.asString().?),
-        .atom => @enumFromInt(data.asAtom().?),
-        .function => @enumFromInt(data.asFunction().?),
-        .table => @enumFromInt(data.asTable().?),
-        .resource => @enumFromInt(data.asResource().?),
+        .string => @fromBackingInt(@intCast(data.asString().?)),
+        .atom => @fromBackingInt(@intCast(data.asAtom().?)),
+        .function => @fromBackingInt(@intCast(data.asFunction().?)),
+        .table => @fromBackingInt(@intCast(data.asTable().?)),
+        .resource => @fromBackingInt(@intCast(data.asResource().?)),
         .bool => data.asAtom().? == revo.CoreAtoms.atomId(.true),
         .any => data,
     };
@@ -350,30 +350,30 @@ pub fn unwrapArg(comptime spec: ParamType, data: Value) paramToType(spec) {
 pub fn def(comptime impl: anytype) HostFunc {
     const fn_info = @typeInfo(@TypeOf(impl)).@"fn";
     comptime {
-        if (fn_info.params.len < 1) @compileError("def requires (vm, ...) signature");
-        if (fn_info.params[0].type.? != *VM) @compileError("first param must be *VM");
+        if (fn_info.param_types.len < 1) @compileError("def requires (vm, ...) signature");
+        if (fn_info.param_types[0].? != *VM) @compileError("first param must be *VM");
     }
-    const count = fn_info.params.len - 1;
+    const count = fn_info.param_types.len - 1;
     const Storage = struct {
         pub const specs: [count]ParamType = blk: {
             var result: [count]ParamType = undefined;
-            for (fn_info.params[1..], 0..) |param, i| {
-                result[i] = typeToParam(param.type.?);
+            for (fn_info.param_types[1..], 0..) |param, i| {
+                result[i] = typeToParam(param.?);
             }
             break :blk result;
         };
         pub const required_count: usize = blk: {
             var n: usize = 0;
-            for (fn_info.params[1..]) |param| {
-                if (!isOptional(param.type.?)) n += 1;
+            for (fn_info.param_types[1..]) |param| {
+                if (!isOptional(param.?)) n += 1;
             }
             break :blk n;
         };
         pub const all_types: [count + 1]type = blk: {
             var result: [count + 1]type = undefined;
             result[0] = *VM;
-            for (fn_info.params[1..], 0..) |param, i| {
-                result[i + 1] = param.type.?;
+            for (fn_info.param_types[1..], 0..) |param, i| {
+                result[i + 1] = param.?;
             }
             break :blk result;
         };
@@ -390,7 +390,7 @@ pub fn def(comptime impl: anytype) HostFunc {
                 var args: Storage.FullArgs = undefined;
                 args[0] = vm;
                 inline for (Storage.specs, 0..) |spec, i| {
-                    const P = fn_info.params[i + 1].type.?;
+                    const P = fn_info.param_types[i + 1].?;
                     if (i < raw.len) {
                         const val = unwrapArg(spec, raw[i]);
                         args[i + 1] = if (comptime isOptional(P)) .{ .value = val } else val;
@@ -404,12 +404,12 @@ pub fn def(comptime impl: anytype) HostFunc {
                 }
                 return @call(.auto, impl, args);
             }
-            fn getDefault(comptime i: usize, vm: *VM) !fn_info.params[i + 1].type.? {
-                const OptionalType = fn_info.params[i + 1].type.?;
+            fn getDefault(comptime i: usize, vm: *VM) !fn_info.param_types[i + 1].? {
+                const OptionalType = fn_info.param_types[i + 1].?;
                 const default = OptionalType.default_value;
                 const spec = Storage.specs[i];
                 const inner = switch (spec) {
-                    .string => @as(ArgTypes.string, @enumFromInt(try vm.strings.own(default))),
+                    .string => @as(ArgTypes.string, @fromBackingInt(@intCast(try vm.strings.own(default)))),
                     else => default,
                 };
                 return .{ .value = inner };
@@ -429,8 +429,8 @@ fn isOptional(comptime P: type) bool {
 fn countFn(comptime S: type) comptime_int {
     comptime {
         var c: usize = 0;
-        for (@typeInfo(S).@"struct".decls) |decl| {
-            if (@typeInfo(@TypeOf(@field(S, decl.name))) == .@"fn") c += 1;
+        for (@typeInfo(S).@"struct".decl_names) |decl_name| {
+            if (@typeInfo(@TypeOf(@field(S, decl_name))) == .@"fn") c += 1;
         }
         return c;
     }
@@ -443,16 +443,16 @@ fn countFn(comptime S: type) comptime_int {
 /// the registered name is the full decl name, so `@"fs.stat"` pairs
 /// with the `fs.stat` spec by head instead of by position
 pub fn impls(comptime ImplType: type) type {
-    const decls = @typeInfo(ImplType).@"struct".decls;
+    const decl_names = @typeInfo(ImplType).@"struct".decl_names;
     const count = countFn(ImplType);
     return struct {
         pub const impls_list: [count]specs.Impl = blk: {
             var result: [count]specs.Impl = undefined;
             var i: usize = 0;
-            for (decls) |decl| {
-                const f = @field(ImplType, decl.name);
+            for (decl_names) |decl_name| {
+                const f = @field(ImplType, decl_name);
                 if (@typeInfo(@TypeOf(f)) == .@"fn") {
-                    result[i] = .{ .name = decl.name, .f = def(f) };
+                    result[i] = .{ .name = decl_name, .f = def(f) };
                     i += 1;
                 }
             }

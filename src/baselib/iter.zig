@@ -53,7 +53,7 @@ pub const Impl = struct {
         var v: Value = undefined;
         var idx: Value = undefined;
         while (try pullStep(vm, st_id, &v, &idx))
-            _ = try callPred(vm, Value.new.function(@intFromEnum(f)), v, idx);
+            _ = try callPred(vm, Value.new.function(@backingInt(f)), v, idx);
         return HostResult.coreAtom(.ok);
     }
 
@@ -63,7 +63,7 @@ pub const Impl = struct {
         var v: Value = undefined;
         var idx: Value = undefined;
         while (try pullStep(vm, st_id, &v, &idx)) {
-            if (isTruthy(try callPred(vm, Value.new.function(@intFromEnum(f)), v, idx))) return .data(v);
+            if (isTruthy(try callPred(vm, Value.new.function(@backingInt(f)), v, idx))) return .data(v);
         }
         return .data(revo.Value.new.core(.nil));
     }
@@ -74,7 +74,7 @@ pub const Impl = struct {
         var v: Value = undefined;
         var idx: Value = undefined;
         while (try pullStep(vm, st_id, &v, &idx)) {
-            if (!isTruthy(try callPred(vm, Value.new.function(@intFromEnum(f)), v, idx))) return ._bool(false);
+            if (!isTruthy(try callPred(vm, Value.new.function(@backingInt(f)), v, idx))) return ._bool(false);
         }
         return ._bool(true);
     }
@@ -85,7 +85,7 @@ pub const Impl = struct {
         var v: Value = undefined;
         var idx: Value = undefined;
         while (try pullStep(vm, st_id, &v, &idx)) {
-            if (isTruthy(try callPred(vm, Value.new.function(@intFromEnum(f)), v, idx))) return ._bool(true);
+            if (isTruthy(try callPred(vm, Value.new.function(@backingInt(f)), v, idx))) return ._bool(true);
         }
         return ._bool(false);
     }
@@ -97,7 +97,7 @@ pub const Impl = struct {
         var v: Value = undefined;
         var idx: Value = undefined;
         while (try pullStep(vm, st_id, &v, &idx))
-            acc = try vm.callFunctionParts(Value.new.function(@intFromEnum(f)), null, &[_]Value{ acc, v }, null);
+            acc = try vm.callFunctionParts(Value.new.function(@backingInt(f)), null, &[_]Value{ acc, v }, null);
         return .data(acc);
     }
 
@@ -113,7 +113,7 @@ pub const Impl = struct {
                 acc = v;
                 got = true;
             } else {
-                acc = try vm.callFunctionParts(Value.new.function(@intFromEnum(f)), null, &[_]Value{ acc, v }, null);
+                acc = try vm.callFunctionParts(Value.new.function(@backingInt(f)), null, &[_]Value{ acc, v }, null);
             }
         }
         if (!got) return .data(revo.Value.new.core(.nil));
@@ -254,7 +254,7 @@ fn iteratorNext(args: []const Value, vm: *VM) !HostResult {
     const kind_val = (try vm.tables.get(table_id)).getRawAtom(revo.CoreAtoms.kind.atomId(), vm) orelse
         return .data(revo.Value.new.core(.done));
     const kind_num = kind_val.asNumOpt() orelse return .data(revo.Value.new.core(.done));
-    const kind: Kind = @enumFromInt(@as(usize, @intFromFloat(kind_num)));
+    const kind: Kind = @fromBackingInt(@intCast(@as(usize, @intFromFloat(kind_num))));
     return switch (kind) {
         .seq => seqNext(table_id, vm),
         .map => mapNext(table_id, vm),
@@ -459,7 +459,7 @@ fn makeSeqIterator(vm: *VM, obj: Value) !HostResult {
 fn makeIterator(vm: *VM, kind: Kind) !mem.TableID {
     const it_id = try vm.tables.create();
     const it = try vm.tables.get(it_id);
-    try it.putRawAtom(revo.CoreAtoms.kind.atomId(), Value.new.num(@as(f64, @floatFromInt(@intFromEnum(kind)))), vm);
+    try it.putRawAtom(revo.CoreAtoms.kind.atomId(), Value.new.num(@as(f64, @floatFromInt(@backingInt(kind)))), vm);
     const next_id = try vm.installHost("iter_next", .{
         .arity = 1,
         .param_types = &.{.any},

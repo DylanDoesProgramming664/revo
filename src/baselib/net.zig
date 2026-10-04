@@ -26,7 +26,7 @@ const Args = root.host.ArgTypes;
 
 pub const Impl = struct {
     pub fn connect(vm: *VM, host: Args.string, port: Args.number) !HostResult {
-        const host_str = vm.stringValue(@intFromEnum(host));
+        const host_str = vm.stringValue(@backingInt(host));
         const port_int: u16 = root.host.numToInt(u16, port) orelse
             return .errType(1, "port num 0..65535", root.typeof(Value.new.num(port), vm));
 
@@ -97,7 +97,7 @@ pub const Impl = struct {
 
     pub fn accept(vm: *VM, self: Args.table) !HostResult {
         if (builtin.target.os.tag == .windows) return error.OsNotSupported;
-        const socket_data = Value.new.table(@intFromEnum(self));
+        const socket_data = Value.new.table(@backingInt(self));
 
         if (!try isServer(socket_data, vm)) return HostResult.Err(vm, "NotServerSocket");
 
@@ -133,8 +133,8 @@ pub const Impl = struct {
 
     pub fn send(vm: *VM, self: Args.table, data: Args.string) !HostResult {
         if (builtin.target.os.tag == .windows or builtin.target.os.tag == .wasi) return error.OsNotSupported;
-        const socket_data = Value.new.table(@intFromEnum(self));
-        const message = vm.stringValue(@intFromEnum(data));
+        const socket_data = Value.new.table(@backingInt(self));
+        const message = vm.stringValue(@backingInt(data));
 
         if (try isServer(socket_data, vm)) return HostResult.Err(vm, "CannotSendOnServer");
 
@@ -160,7 +160,7 @@ pub const Impl = struct {
         };
 
         const token_ptr = try vm.runtime.alloc.create(SendWaitToken);
-        token_ptr.* = .{ .message = @intFromEnum(data), .offset = offset };
+        token_ptr.* = .{ .message = @backingInt(data), .offset = offset };
         try vm.sched.parkCurrentForIo(
             @intCast(handle),
             .write,
@@ -173,8 +173,8 @@ pub const Impl = struct {
 
     pub fn recv(vm: *VM, self: Args.table, opts: Args.table) !HostResult {
         if (builtin.target.os.tag == .windows or builtin.target.os.tag == .wasi) return error.OsNotSupported;
-        const socket_data = Value.new.table(@intFromEnum(self));
-        const opts_data = Value.new.table(@intFromEnum(opts));
+        const socket_data = Value.new.table(@backingInt(self));
+        const opts_data = Value.new.table(@backingInt(opts));
 
         if (try isServer(socket_data, vm)) return HostResult.Err(vm, "CannotRecvOnServer");
 
@@ -262,7 +262,7 @@ pub const Impl = struct {
     }
 
     pub fn close(vm: *VM, self: Args.table) !HostResult {
-        const socket_data = Value.new.table(@intFromEnum(self));
+        const socket_data = Value.new.table(@backingInt(self));
         try closeEntry(socket_data, vm);
         return HostResult.Ok(vm, revo.Value.new.core(.nil));
     }

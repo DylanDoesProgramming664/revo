@@ -144,4 +144,3 @@ const VM = revo.VM;
 const root = @import("root.zig");
 const specs = @import("specs.zig");
 const HostResult = root.host.HostResult;
-const typeof = root.typeof;
