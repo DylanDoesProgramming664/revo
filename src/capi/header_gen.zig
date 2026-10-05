@@ -69,19 +69,19 @@ pub fn data(gpa: Allocator, version: []const u8) ![]u8 {
     defer arena_state.deinit();
     const arena = arena_state.allocator();
 
-    if (std.mem.indexOf(u8, template, version_marker) == null)
+    if (std.mem.find(u8, template, version_marker) == null)
         return error.VersionMarkerNotFound;
 
     var out: []const u8 = template;
     for (modules) |m| {
-        if (std.mem.indexOf(u8, out, m.marker) == null) {
+        if (std.mem.find(u8, out, m.marker) == null) {
             std.debug.print("revo.h: marker '{s}' not found in template\n", .{m.marker});
             return error.MarkerNotFound;
         }
 
         const decls = try renderModule(arena, m);
         out = try std.mem.replaceOwned(u8, arena, out, m.marker, decls);
-        if (std.mem.indexOf(u8, out, m.marker) != null) return error.MarkerNotReplaced;
+        if (std.mem.find(u8, out, m.marker) != null) return error.MarkerNotReplaced;
     }
     out = try std.mem.replaceOwned(u8, arena, out, version_marker, version);
     return gpa.dupe(u8, out);
@@ -90,7 +90,7 @@ pub fn data(gpa: Allocator, version: []const u8) ![]u8 {
 /// emits every exported `callconv(.c)` fn with the module's prefix, in source order
 /// (so you control grouping by ordering the zig source)
 fn renderModule(arena: Allocator, m: Module) ![]const u8 {
-    var ast = try Ast.parse(arena, m.src, .zig);
+    var ast = try Ast.parse(arena, m.src, .{ .mode = .zig });
     defer ast.deinit(arena);
     if (ast.errors.len > 0) {
         for (ast.errors) |e| {

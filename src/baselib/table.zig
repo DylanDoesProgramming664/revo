@@ -1,11 +1,11 @@
 pub const Impl = struct {
     pub fn rawget(vm: *VM, self: Args.table, k: Args.any) !HostResult {
-        const t = try vm.tables.get(@intFromEnum(self));
+        const t = try vm.tables.get(@backingInt(self));
         return .data(t.getRaw(k, vm) orelse revo.Value.new.core(.undef));
     }
 
     pub fn at(vm: *VM, self: Args.table, index: Args.number) !HostResult {
-        const t = try vm.tables.get(@intFromEnum(self));
+        const t = try vm.tables.get(@backingInt(self));
         const idx = root.host.numToInt(isize, index) orelse return .errType(1, "integer num", typeof(Value.new.num(index), vm));
         if (idx < 0) return .data(revo.Value.new.core(.undef));
         const f: f64 = @floatFromInt(idx);
@@ -13,7 +13,7 @@ pub const Impl = struct {
     }
 
     pub fn @"at?"(vm: *VM, self: Args.table, index: Args.number) !HostResult {
-        const t = try vm.tables.get(@intFromEnum(self));
+        const t = try vm.tables.get(@backingInt(self));
         const idx = root.host.numToInt(isize, index) orelse return ._bool(false);
         if (idx < 0) return ._bool(false);
         const f: f64 = @floatFromInt(idx);
@@ -21,17 +21,17 @@ pub const Impl = struct {
     }
 
     pub fn key(vm: *VM, self: Args.table, k: Args.any) !HostResult {
-        const t = try vm.tables.get(@intFromEnum(self));
+        const t = try vm.tables.get(@backingInt(self));
         return .data(t.getRaw(k, vm) orelse revo.Value.new.core(.undef));
     }
 
     pub fn @"key?"(vm: *VM, self: Args.table, k: Args.any) !HostResult {
-        const t = try vm.tables.get(@intFromEnum(self));
+        const t = try vm.tables.get(@backingInt(self));
         return ._bool(t.getRaw(k, vm) != null);
     }
 
     pub fn last(vm: *VM, self: Args.table) !HostResult {
-        const t = try vm.tables.get(@intFromEnum(self));
+        const t = try vm.tables.get(@backingInt(self));
 
         return .data(if (t.array.items.len == 0)
             Value.new.core(.undef)
@@ -40,13 +40,13 @@ pub const Impl = struct {
     }
 
     pub fn rawset(vm: *VM, self: Args.table, k: Args.any, val: Args.any) !HostResult {
-        const t = try vm.tables.get(@intFromEnum(self));
+        const t = try vm.tables.get(@backingInt(self));
         try t.putRaw(k, val, vm);
-        return .data(Value.new.table(@intFromEnum(self)));
+        return .data(Value.new.table(@backingInt(self)));
     }
 
     pub fn unwrap(vm: *VM, self: Args.table) !HostResult {
-        const val = Value.new.table(@intFromEnum(self));
+        const val = Value.new.table(@backingInt(self));
         const parts = vm.resultParts(val) orelse
             return .errType(0, "table with at least 2 elements", "table with less than 2 elements");
         if (parts.len < 2)
@@ -59,7 +59,7 @@ pub const Impl = struct {
     }
 
     pub fn unwrap_err(vm: *VM, self: Args.table) !HostResult {
-        const val = Value.new.table(@intFromEnum(self));
+        const val = Value.new.table(@backingInt(self));
         const parts = vm.resultParts(val) orelse
             return .errType(0, "table with at least 2 elements", "table with less than 2 elements");
         if (parts.len < 2)
@@ -77,10 +77,10 @@ pub const Impl = struct {
     }
 
     pub fn insert(vm: *VM, self: Args.table, pos_num: Args.number, val: Args.any) !HostResult {
-        const table = vm.tables.get(@intFromEnum(self)) catch return .errType(
+        const table = vm.tables.get(@backingInt(self)) catch return .errType(
             0,
             "table",
-            typeof(Value.new.table(@intFromEnum(self)), vm),
+            typeof(Value.new.table(@backingInt(self)), vm),
         );
         const pos: i64 = root.host.numToInt(i64, pos_num) orelse return .errType(
             1,
@@ -100,10 +100,10 @@ pub const Impl = struct {
     }
 
     pub fn pop(vm: *VM, self: Args.table) !HostResult {
-        const table = vm.tables.get(@intFromEnum(self)) catch return .errType(
+        const table = vm.tables.get(@backingInt(self)) catch return .errType(
             0,
             "table",
-            typeof(Value.new.table(@intFromEnum(self)), vm),
+            typeof(Value.new.table(@backingInt(self)), vm),
         );
         if (table.array.items.len == 0) return .coreAtom(.undef);
 
@@ -112,18 +112,18 @@ pub const Impl = struct {
     }
 
     pub fn remove(vm: *VM, self: Args.table, k: Args.any) !HostResult {
-        const table = vm.tables.get(@intFromEnum(self)) catch return .errType(
+        const table = vm.tables.get(@backingInt(self)) catch return .errType(
             0,
             "table",
-            typeof(Value.new.table(@intFromEnum(self)), vm),
+            typeof(Value.new.table(@backingInt(self)), vm),
         );
         const removed = table.removeAndReturn(k, vm) orelse return .other("not found");
         return .data(removed);
     }
 
     pub fn join(vm: *VM, self: Args.table, delim: Args.string) !HostResult {
-        const table = try vm.tables.get(@intFromEnum(self));
-        const delim_str = vm.stringValue(@intFromEnum(delim));
+        const table = try vm.tables.get(@backingInt(self));
+        const delim_str = vm.stringValue(@backingInt(delim));
         var buf = std.Io.Writer.Allocating.init(vm.runtime.alloc);
         defer buf.deinit();
 
@@ -137,7 +137,7 @@ pub const Impl = struct {
     }
 
     pub fn keys(vm: *VM, self: Args.table) !HostResult {
-        const table = try vm.tables.get(@intFromEnum(self));
+        const table = try vm.tables.get(@backingInt(self));
         var keys_list = try std.ArrayList(Value).initCapacity(vm.runtime.alloc, table.array.items.len + 10);
         defer keys_list.deinit(vm.runtime.alloc);
 
@@ -148,7 +148,7 @@ pub const Impl = struct {
     }
 
     pub fn values(vm: *VM, self: Args.table) !HostResult {
-        const table = try vm.tables.get(@intFromEnum(self));
+        const table = try vm.tables.get(@backingInt(self));
         var values_list = try std.ArrayList(Value).initCapacity(vm.runtime.alloc, table.array.items.len + 10);
         defer values_list.deinit(vm.runtime.alloc);
 
@@ -159,16 +159,16 @@ pub const Impl = struct {
     }
 
     pub fn copy(vm: *VM, self: Args.table) !HostResult {
-        return .data(try vm.tableCopy(@intFromEnum(self)));
+        return .data(try vm.tableCopy(@backingInt(self)));
     }
 
     pub fn deep_copy(vm: *VM, self: Args.table) !HostResult {
-        return .data(try vm.tableDeepCopy(@intFromEnum(self)));
+        return .data(try vm.tableDeepCopy(@backingInt(self)));
     }
 
     pub fn merge(vm: *VM, self: Args.table, other: Args.table) !HostResult {
-        const t1 = try vm.tables.get(@intFromEnum(self));
-        const t2 = try vm.tables.get(@intFromEnum(other));
+        const t1 = try vm.tables.get(@backingInt(self));
+        const t2 = try vm.tables.get(@backingInt(other));
         const result_table = try vm.tables.create();
         const result = try vm.tables.get(result_table);
 
@@ -189,7 +189,7 @@ pub const Impl = struct {
     }
 
     pub fn sort(vm: *VM, self: Args.table) !HostResult {
-        const tbl = try vm.tables.get(@intFromEnum(self));
+        const tbl = try vm.tables.get(@backingInt(self));
         const Context = struct {
             vm_: *VM,
             pub fn lessThanFn(ctx: @This(), lhs: Value, rhs: Value) bool {
@@ -197,11 +197,11 @@ pub const Impl = struct {
             }
         };
         std.mem.sort(Value, tbl.array.items, Context{ .vm_ = vm }, Context.lessThanFn);
-        return .data(Value.new.table(@intFromEnum(self)));
+        return .data(Value.new.table(@backingInt(self)));
     }
 
     pub fn sort_by(vm: *VM, self: Args.table, compare_fn: Args.function) !HostResult {
-        const tbl = try vm.tables.get(@intFromEnum(self));
+        const tbl = try vm.tables.get(@backingInt(self));
         const Context = struct {
             vm_: *VM,
             fn_data: Value,
@@ -213,20 +213,20 @@ pub const Impl = struct {
         std.mem.sort(
             Value,
             tbl.array.items,
-            Context{ .vm_ = vm, .fn_data = Value.new.function(@intFromEnum(compare_fn)) },
+            Context{ .vm_ = vm, .fn_data = Value.new.function(@backingInt(compare_fn)) },
             Context.compare,
         );
-        return .data(Value.new.table(@intFromEnum(self)));
+        return .data(Value.new.table(@backingInt(self)));
     }
 
     pub fn reverse(vm: *VM, self: Args.table) !HostResult {
-        const tbl = try vm.tables.get(@intFromEnum(self));
+        const tbl = try vm.tables.get(@backingInt(self));
         std.mem.reverse(Value, tbl.array.items);
-        return .data(Value.new.table(@intFromEnum(self)));
+        return .data(Value.new.table(@backingInt(self)));
     }
 
     pub fn flatten(vm: *VM, self: Args.table) !HostResult {
-        const src = try vm.tables.get(@intFromEnum(self));
+        const src = try vm.tables.get(@backingInt(self));
         const result_id = try vm.tables.create();
         const result = try vm.tables.get(result_id);
 
@@ -253,12 +253,12 @@ pub const Impl = struct {
     }
 
     pub fn @"contains?"(vm: *VM, self: Args.table, search_val: Args.any) !HostResult {
-        const tbl = try vm.tables.get(@intFromEnum(self));
+        const tbl = try vm.tables.get(@backingInt(self));
         return ._bool(findInArray(vm, tbl.array.items, search_val) != null);
     }
 
     pub fn unique(vm: *VM, self: Args.table) !HostResult {
-        const src = try vm.tables.get(@intFromEnum(self));
+        const src = try vm.tables.get(@backingInt(self));
         const result_id = try vm.tables.create();
         const result = try vm.tables.get(result_id);
         for (src.array.items) |item| {
@@ -270,30 +270,30 @@ pub const Impl = struct {
     }
 
     pub fn len(vm: *VM, self: Args.table) !HostResult {
-        const table = try vm.tables.get(@intFromEnum(self));
+        const table = try vm.tables.get(@backingInt(self));
         return .data(Value.new.num(table.count()));
     }
 
     pub fn alen(vm: *VM, self: Args.table) !HostResult {
-        const table = try vm.tables.get(@intFromEnum(self));
+        const table = try vm.tables.get(@backingInt(self));
         return .data(Value.new.num(table.array.items.len));
     }
 
     pub fn klen(vm: *VM, self: Args.table) !HostResult {
-        const table = try vm.tables.get(@intFromEnum(self));
+        const table = try vm.tables.get(@backingInt(self));
         return .data(Value.new.num(table.hash.count));
     }
 
     pub fn @"empty?"(vm: *VM, self: Args.table) !HostResult {
-        const table = try vm.tables.get(@intFromEnum(self));
+        const table = try vm.tables.get(@backingInt(self));
         return ._bool(table.count() == 0);
     }
 
     pub fn update(vm: *VM, self: Args.table, k: Args.any, f: Args.function) !HostResult {
-        const tid = @intFromEnum(self);
+        const tid = @backingInt(self);
         const table = try vm.tables.get(tid);
         const old = try table.get(k, vm) orelse Value.new.nil();
-        const new = try vm.callFunctionParts(Value.new.function(@intFromEnum(f)), null, &[_]Value{old}, null);
+        const new = try vm.callFunctionParts(Value.new.function(@backingInt(f)), null, &[_]Value{old}, null);
         // re-fetch: the call above may have created tables
         const t = try vm.tables.get(tid);
         try t.put(tid, vm, k, new);
@@ -305,7 +305,7 @@ pub const Impl = struct {
         if (times < 0) return .errType(1, "non-negative num", "negative num");
 
         const count: usize = @intCast(times);
-        const left = try vm.tables.get(@intFromEnum(self));
+        const left = try vm.tables.get(@backingInt(self));
 
         const result_id = try vm.tables.create();
         const result = try vm.tables.get(result_id);
@@ -317,7 +317,7 @@ pub const Impl = struct {
     }
 
     pub fn count_of(vm: *VM, self: Args.table, search_val: Args.any) !HostResult {
-        const table = try vm.tables.get(@intFromEnum(self));
+        const table = try vm.tables.get(@backingInt(self));
         var counter: i16 = 0;
 
         for (table.array.items) |item| {
@@ -329,7 +329,7 @@ pub const Impl = struct {
     }
 
     pub fn index_of(vm: *VM, self: Args.table, search_val: Args.any) !HostResult {
-        const tbl = try vm.tables.get(@intFromEnum(self));
+        const tbl = try vm.tables.get(@backingInt(self));
         if (findInArray(vm, tbl.array.items, search_val)) |i| {
             return .data(Value.new.num(i));
         }

@@ -5,7 +5,7 @@ revo works on any platform llvm works on, albeit without io and, for now, only f
 ## building
 
 ```sh
-zig build -Dtarget=wasm64-freestanding -Doptimize=ReleaseFast
+zig build -Dtarget=wasm64-freestanding -Doptimize=fast
 ```
 
 the artifact is installed to `zig-out/bin/revo.wasm`. a copy lives at
@@ -14,7 +14,7 @@ the artifact is installed to `zig-out/bin/revo.wasm`. a copy lives at
 > [!NOTE]
 > -Doptimize=Debug is broken for wasm64! there's a codegen bug that causes memory
 > access out of bounds at runtime.
-> i have no idea why, so you'd need to use any other optimize (made with -Doptimize=ReleaseFast in mind)
+> i have no idea why, so you'd need to use any other optimize (made with -Doptimize=fast in mind)
 
 ## what's here
 

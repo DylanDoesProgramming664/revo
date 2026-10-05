@@ -175,32 +175,32 @@ const Impl = struct {
 
     pub fn is_key_pressed(vm: *VM, key: Args.number) !HostResult {
         _ = vm;
-        return .data(Value.new.boolean(rl.isKeyPressed(@enumFromInt(@as(i32, @intFromFloat(key))))));
+        return .data(Value.new.boolean(rl.isKeyPressed(@fromBackingInt(@intCast(@as(i32, @intFromFloat(key)))))));
     }
 
     pub fn is_key_down(vm: *VM, key: Args.number) !HostResult {
         _ = vm;
-        return .data(Value.new.boolean(rl.isKeyDown(@enumFromInt(@as(i32, @intFromFloat(key))))));
+        return .data(Value.new.boolean(rl.isKeyDown(@fromBackingInt(@intCast(@as(i32, @intFromFloat(key)))))));
     }
 
     pub fn is_key_released(vm: *VM, key: Args.number) !HostResult {
         _ = vm;
-        return .data(Value.new.boolean(rl.isKeyReleased(@enumFromInt(@as(i32, @intFromFloat(key))))));
+        return .data(Value.new.boolean(rl.isKeyReleased(@fromBackingInt(@intCast(@as(i32, @intFromFloat(key)))))));
     }
 
     pub fn get_key_pressed(vm: *VM) !HostResult {
         _ = vm;
-        return .data(Value.new.num(@intFromEnum(rl.getKeyPressed())));
+        return .data(Value.new.num(@backingInt(rl.getKeyPressed())));
     }
 
     pub fn is_mouse_button_pressed(vm: *VM, btn: Args.number) !HostResult {
         _ = vm;
-        return .data(Value.new.boolean(rl.isMouseButtonPressed(@enumFromInt(@as(i32, @intFromFloat(btn))))));
+        return .data(Value.new.boolean(rl.isMouseButtonPressed(@fromBackingInt(@intCast(@as(i32, @intFromFloat(btn)))))));
     }
 
     pub fn is_mouse_button_down(vm: *VM, btn: Args.number) !HostResult {
         _ = vm;
-        return .data(Value.new.boolean(rl.isMouseButtonDown(@enumFromInt(@as(i32, @intFromFloat(btn))))));
+        return .data(Value.new.boolean(rl.isMouseButtonDown(@fromBackingInt(@intCast(@as(i32, @intFromFloat(btn)))))));
     }
 
     pub fn get_mouse_x(vm: *VM) !HostResult {

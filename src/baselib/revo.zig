@@ -2,7 +2,7 @@ const Args = root.host.ArgTypes;
 
 pub const Impl = struct {
     pub fn eval(vm: *VM, source: Args.string) !HostResult {
-        const src = vm.stringValue(@intFromEnum(source));
+        const src = vm.stringValue(@backingInt(source));
         const res = revo.run.runModule(vm, "<eval>", src, true) catch {
             return .other("eval failed");
         };
@@ -16,7 +16,7 @@ pub const Impl = struct {
     }
 
     pub fn compile(vm: *VM, source: Args.string) !HostResult {
-        const src = vm.stringValue(@intFromEnum(source));
+        const src = vm.stringValue(@backingInt(source));
         const result = try revo.lang.build(vm, .{ .text = src, .name = "<anon>" }, .{});
         switch (result) {
             .ok => |bytecode| {
@@ -38,7 +38,7 @@ pub const Impl = struct {
 
     pub fn version(vm: *VM) !HostResult {
         const v = @import("build_options").version;
-        return if (@import("builtin").mode == .Debug)
+        return if (@import("builtin").mode == .debug)
             .data(try vm.ownValueString("revo #" ++ v))
         else
             .data(try vm.ownValueString("revo v" ++ v));
@@ -125,7 +125,7 @@ test "revo.dofile returns the file's value" {
     const file_path = try std.Io.Dir.path.join(std.testing.allocator, &.{ dir_path, "hi.rv" });
     defer std.testing.allocator.free(file_path);
 
-    const source = try std.fmt.allocPrint(std.testing.allocator,
+    const source = try std.testing.allocator.print(
         \\ const {{_, res}} = revo.dofile('{s}')
         \\ res.x
     , .{file_path});

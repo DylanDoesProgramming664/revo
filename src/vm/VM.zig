@@ -197,7 +197,7 @@ loading_stack: std.ArrayList([]const u8),
 
 /// indexed by @intFromEnum(mem.ValueTag); tags are non-contiguous (0, 8-13)
 metatables: [
-    @as(usize, @intFromEnum(memory.ValueTag.@"opaque")) + 1
+    @as(usize, @backingInt(memory.ValueTag.@"opaque")) + 1
 ]?mem.TableID = @splat(null),
 import_cache: ImportCache,
 package_path: std.ArrayList([]const u8),
@@ -764,7 +764,7 @@ pub inline fn writeRegisterUnsafe(self: *VM, slot: usize, value: Value) void {
 
 /// register read using a cached slots pointer (avoids currentFiber call)
 pub inline fn regRead(slots: []const Value, base: usize, reg: opcode.Register) Value {
-    if (builtin.mode != .ReleaseFast) {
+    if (builtin.mode != .fast) {
         const slot = base + reg;
         if (slot >= slots.len)
             return revo.Value.new.core(.missing);
@@ -774,7 +774,7 @@ pub inline fn regRead(slots: []const Value, base: usize, reg: opcode.Register) V
 
 /// register write using a cached slots pointer (avoids currentFiber call)
 pub inline fn regWrite(slots: []Value, base: usize, reg: opcode.Register, value: Value) void {
-    if (builtin.mode != .ReleaseFast) {
+    if (builtin.mode != .fast) {
         const slot = base + reg;
         if (slot >= slots.len)
             @panic("register write out of bounds; this is a compiler bug, report at " ++
@@ -980,7 +980,7 @@ pub fn setRuntimeMessage(self: *VM, message: []const u8) !void {
 }
 
 pub fn setRuntimeMessageFmt(self: *VM, comptime fmt_str: []const u8, args: anytype) !void {
-    const message = try std.fmt.allocPrint(self.runtime.alloc, fmt_str, args);
+    const message = try self.runtime.alloc.print( fmt_str, args);
     self.clearRuntimeMessage();
     self.runtime_message = message;
 }
@@ -997,8 +997,7 @@ pub fn clearRuntimeMessage(self: *VM) void {
 
 /// shorthand for TypeError with "want X, got Y"
 pub fn typeError(self: *VM, comptime expected: []const u8, got: mem.Value) RunFailure {
-    const msg = std.fmt.allocPrint(
-        self.runtime.alloc,
+    const msg = self.runtime.alloc.print(
         "want {s}, got {s}",
         .{ expected, @tagName(got.tag()) },
     ) catch return self.runFailure(error.TypeError);
@@ -1008,7 +1007,7 @@ pub fn typeError(self: *VM, comptime expected: []const u8, got: mem.Value) RunFa
 }
 
 pub fn fail(self: *VM, comptime err: RunError, comptime fmt: []const u8, args: anytype) RunFailure {
-    const msg = std.fmt.allocPrint(self.runtime.alloc, fmt, args) catch
+    const msg = self.runtime.alloc.print( fmt, args) catch
         return self.runFailure(err);
     self.setRuntimeMessageOwned(msg);
     return self.runFailure(err);
@@ -1373,7 +1372,7 @@ pub fn getMetatableId(
                     break :blk mt_id;
             } else |_| {}
             break :blk self.metatables[
-                @intFromEnum(
+                @backingInt(
                     mem.ValueTag.table,
                 )
             ];
@@ -1384,9 +1383,9 @@ pub fn getMetatableId(
                 if (cell.metatable) |mt_id|
                     break :blk mt_id;
             } else |_| {}
-            break :blk self.metatables[@intFromEnum(mem.ValueTag.resource)];
+            break :blk self.metatables[@backingInt(mem.ValueTag.resource)];
         },
-        else => |e| self.metatables[@intFromEnum(e)],
+        else => |e| self.metatables[@backingInt(e)],
     };
 }
 
@@ -1413,7 +1412,7 @@ pub inline fn tableFast(
     self: *VM,
     id: mem.TableID,
 ) !*root.table.Table {
-    if (builtin.mode == .ReleaseFast) {
+    if (builtin.mode == .fast) {
         std.debug.assert(id < self.tables.tables.items.len);
         std.debug.assert(
             self.tables.tables.items[id] != null,
@@ -1427,7 +1426,7 @@ inline fn functionFast(
     self: *VM,
     id: mem.FunctionID,
 ) !*root.callable.Function {
-    if (builtin.mode == .ReleaseFast) {
+    if (builtin.mode == .fast) {
         std.debug.assert(
             id < self.callable.functions.items.len,
         );

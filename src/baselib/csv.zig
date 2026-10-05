@@ -39,7 +39,7 @@ pub const Impl = struct {
             .value => |v| v,
         };
 
-        const str = vm.stringValue(@intFromEnum(source));
+        const str = vm.stringValue(@backingInt(source));
         var fixed_reader = std.Io.Reader.fixed(str);
         var reader = Reader.init(&fixed_reader, dialect);
 
@@ -114,7 +114,7 @@ fn writeString(data: Value, vm: *VM, writer: *Writer) anyerror!void {
 
 fn writeNum(data: Value, vm: *VM, writer: *Writer) anyerror!void {
     const num = data.asNumOpt().?;
-    const str = try std.fmt.allocPrint(vm.runtime.alloc, "{d}", .{num});
+    const str = try vm.runtime.alloc.print("{d}", .{num});
     defer vm.runtime.alloc.free(str);
     try writer.writeField(str);
 }
@@ -128,7 +128,7 @@ test "csv encode" {
 
 fn buildOpts(raw_opts: Args.table, vm: *VM) !HostErrOr(Dialect) {
     var dialect = Dialect{};
-    const opts = Value.new.table(@intFromEnum(raw_opts));
+    const opts = Value.new.table(@backingInt(raw_opts));
     if (vm.getField(opts, "delimiter")) |id| {
         if (id.asStr()) |delim_id| {
             const delim = vm.stringValue(delim_id);
@@ -158,18 +158,18 @@ fn buildOpts(raw_opts: Args.table, vm: *VM) !HostErrOr(Dialect) {
                 return .{ .err = HostResult.other("wants single character quote").err };
             }
         } else if (id.asAtom()) |quote_id| {
-            if (quote_id == @intFromEnum(revo.CoreAtoms.nil)) {
+            if (quote_id == @backingInt(revo.CoreAtoms.nil)) {
                 dialect.quote = null;
             }
         }
     }
     if (vm.getField(opts, "bom")) |id| {
         if (id.asAtom()) |bom_id| {
-            if (bom_id == @intFromEnum(revo.CoreAtoms.true)) {
+            if (bom_id == @backingInt(revo.CoreAtoms.true)) {
                 dialect.bom = true;
             }
         } else {
-            return .{ .err = HostResult.errType(@intFromEnum(raw_opts), ":true or :false", revo.baselib.typeof(id, vm)).err };
+            return .{ .err = HostResult.errType(@backingInt(raw_opts), ":true or :false", revo.baselib.typeof(id, vm)).err };
         }
     }
     return .{ .value = dialect };

@@ -489,7 +489,7 @@ test "typed resource params reject non-resources" {
 
     const S = struct {
         fn f(_: *VM, h: revo.baselib.host.ArgTypes.resource) anyerror!revo.baselib.host.HostResult {
-            return .data(Value.new.resource(@intFromEnum(h)));
+            return .data(Value.new.resource(@backingInt(h)));
         }
     };
     const fid = try vm.installHost("res_echo", revo.baselib.host.def(S.f));

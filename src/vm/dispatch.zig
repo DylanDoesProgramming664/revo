@@ -869,7 +869,7 @@ inline fn execFiberDispatch(
         .load_local, .bind_local, .store_local => {
             const dst = base + instr.a;
             const src = base + instr.b;
-            if (builtin.mode != .ReleaseFast and src >= regs.len) {
+            if (builtin.mode != .fast and src >= regs.len) {
                 regWrite(regs, base, instr.a, revo.Value.new.core(.missing));
             } else {
                 regs[dst] = regs[src];
@@ -1289,7 +1289,7 @@ noinline fn execConcat(
 
     // number + number fast path
     if (lhs.asNumOpt()) |ln| if (rhs.asNumOpt()) |rn| {
-        const combined = try std.fmt.allocPrint(alloc, "{d}{d}", .{ ln, rn });
+        const combined = try alloc.print( "{d}{d}", .{ ln, rn });
         self.noteGCPressure(combined.len + @sizeOf(Value));
         regWrite(regs, base, instr.a, try self.adoptValueStringNoDedup(combined));
         return null;
@@ -1299,8 +1299,8 @@ noinline fn execConcat(
     if (lhs.asStr()) |ls2| if (rhs.asNumOpt()) |rn| {
         const l_str = self.stringValue(ls2);
         var r_buf: [128]u8 = undefined;
-        const r_str = std.fmt.bufPrint(&r_buf, "{d}", .{rn}) catch blk: {
-            break :blk try std.fmt.allocPrint(alloc, "{d}", .{rn});
+        const r_str = std.mem.print(&r_buf, "{d}", .{rn}) catch blk: {
+            break :blk try alloc.print( "{d}", .{rn});
         };
         self.noteGCPressure(l_str.len + r_str.len + @sizeOf(Value));
         const combined = try std.mem.concat(alloc, u8, &.{ l_str, r_str });
@@ -1311,7 +1311,7 @@ noinline fn execConcat(
     // number + string fast path
     if (lhs.asNumOpt()) |ln| if (rhs.asStr()) |rs2| {
         const r_str = self.stringValue(rs2);
-        const combined = try std.fmt.allocPrint(alloc, "{d}{s}", .{ ln, r_str });
+        const combined = try alloc.print( "{d}{s}", .{ ln, r_str });
         self.noteGCPressure(combined.len + @sizeOf(Value));
         regWrite(regs, base, instr.a, try self.adoptValueStringNoDedup(combined));
         return null;

@@ -27,6 +27,9 @@ const HostFunc = root.host.HostFunc;
 
 pub const regex_on = @import("build_options").regex;
 pub const ffi_on = @import("build_options").ffi;
+pub const http_on = !revo.is_freestanding;
+pub const fs_on = !revo.is_freestanding;
+pub const net_on = !revo.is_freestanding;
 
 /// the zig side of one spec: registry key + implementation
 pub const Impl = struct {
@@ -67,7 +70,7 @@ pub const groups: []const Group = &.{
         @import("time.zig").impls,
         @import("datetime.zig").impls,
         @import("net.zig").impls,
-        @import("http.zig").impls,
+        if (http_on) @import("http.zig").impls else &.{},
         @import("uri.zig").impls,
         @import("fs.zig").impls,
         @import("revo.zig").impls,
@@ -104,8 +107,6 @@ pub fn loadAllSpecs(caller_alloc: std.mem.Allocator) ![]const []const FnSpec {
                 std.debug.print("iface group '{s}' failed to parse: {s}\n", .{ ig.name, @errorName(err) });
             return err;
         };
-        // compiled-out modules (re/ffi) stay out of every surface instead of
-        // erroring; the old skip-empty-group rule, now spec-level
         specs = try dropDisabledModules(pa, specs);
         for (specs, 0..) |*s, i| {
             if (s.is_type) continue;
@@ -205,7 +206,7 @@ pub fn macroSources(caller_alloc: std.mem.Allocator) ![]const []const u8 {
 fn headKey(spec: *const FnSpec, buf: []u8) []const u8 {
     return switch (spec.head.kind) {
         .global => spec.name,
-        .namespaced => std.fmt.bufPrint(buf, "{s}.{s}", .{ spec.head.module.?, spec.name }) catch spec.name,
+        .namespaced => std.mem.print(buf, "{s}.{s}", .{ spec.head.module.?, spec.name }) catch spec.name,
     };
 }
 
@@ -307,7 +308,10 @@ fn dropDisabledModules(alloc: std.mem.Allocator, specs: []FnSpec) ![]FnSpec {
     for (specs) |s| {
         const disabled = s.head.kind == .namespaced and s.head.module != null and
             ((std.mem.eql(u8, s.head.module.?, "re") and !regex_on) or
-                (std.mem.eql(u8, s.head.module.?, "ffi") and !ffi_on));
+                (std.mem.eql(u8, s.head.module.?, "ffi") and !ffi_on) or
+                (std.mem.eql(u8, s.head.module.?, "http") and !http_on) or
+                (std.mem.eql(u8, s.head.module.?, "fs") and !fs_on) or
+                (std.mem.eql(u8, s.head.module.?, "net") and !net_on));
         if (disabled) {
             s.deinit(alloc);
             continue;
@@ -873,7 +877,7 @@ pub fn registerAll(
             if (has_meta) {
                 const mt_id = try vm.tables.create();
                 for (entry.value_ptr.items) |f| {
-                    if (f.atom) |atom| try vm.putInTable(mt_id, @intFromEnum(atom), f.fn_id);
+                    if (f.atom) |atom| try vm.putInTable(mt_id, @backingInt(atom), f.fn_id);
                 }
                 try vm.setMetatable(Value.new.table(table_id), mt_id);
             }

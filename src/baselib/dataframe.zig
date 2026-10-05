@@ -1,13 +1,10 @@
 const revo = @import("revo");
 const root = @import("root.zig");
 const specs = @import("specs.zig");
-const std = @import("std");
 const table_std = @import("table.zig");
 // const alloc_pool = @import("alloc_pool.zig");
 const Args = root.host.ArgTypes;
 
-const math = std.math;
-const typeof = root.typeof;
 const memory = revo.memory;
 const Value = memory.Value;
 const VM = revo.VM;
@@ -15,7 +12,6 @@ const HostResult = root.host.HostResult;
 const Table = revo.table.Table;
 const testing = revo.lang.test_helpers;
 const table_methods = table_std.Impl;
-
 
 // type Dataframe = table<string, table<any>>
 fn len_internal(vm: *VM, frame_table: Table) !usize {
@@ -40,16 +36,9 @@ fn len_internal(vm: *VM, frame_table: Table) !usize {
 
 pub const Impl = struct {
 
-    fn dataframeErrResult(e: anyerror) !HostResult {
-        switch (e) {
-            error.NonMatchingColumnLengths => return .errType(0, "columns of matching length", "dataframe column lengths do not match"),
-            else => return e,
-        }
-    }
-
     // dataframe.len(Dataframe) -> num
     pub fn len(vm: *VM, frame_table_id: Args.table) !HostResult {
-        const frame_table = try vm.tables.get(@intFromEnum(frame_table_id));
+        const frame_table = try vm.tables.get(@backingInt(frame_table_id));
         var frame_table_iter = frame_table.hash.orderedIterator();
         var col_array_table: *Table = undefined;
         var count: ?usize = null;
@@ -71,8 +60,8 @@ pub const Impl = struct {
 
     // dataframe.select(Dataframe, table<string>) -> Dataframe
     pub fn select(vm: *VM, frame_table_id: Args.table, names_table_id: Args.table) !HostResult {
-        const frame_table = try vm.tables.get(@intFromEnum(frame_table_id));
-        const names_table = try vm.tables.get(@intFromEnum(names_table_id));
+        const frame_table = try vm.tables.get(@backingInt(frame_table_id));
+        const names_table = try vm.tables.get(@backingInt(names_table_id));
         const result_table_id = try vm.tables.create();
         const result_table = try vm.tables.get(result_table_id);
 
@@ -82,7 +71,7 @@ pub const Impl = struct {
             const maybe_coltable = frame_table.getRaw(colname, vm);
             if (maybe_coltable) |coltable| {
                 // clone it, place it in the result table under the same string name
-                const copied_table_id = switch (try table_methods.copy(vm, @enumFromInt(coltable.asTable().?))) {
+                const copied_table_id = switch (try table_methods.copy(vm, @fromBackingInt(@intCast(coltable.asTable().?)))) {
                     .ok => |v| v.asTable().?,
                     .err => |e| return .{ .err = e },
                 };
@@ -95,7 +84,7 @@ pub const Impl = struct {
 
     // dataframe.map(Dataframe, function) -> Dataframe
     pub fn map(vm: *VM, frame_table_id: Args.table, new_col_name: Args.string, f: Args.function) !HostResult {
-        const frame_table = try vm.tables.get(@intFromEnum(frame_table_id));
+        const frame_table = try vm.tables.get(@backingInt(frame_table_id));
         const frame_table_len: usize = try len_internal(vm, frame_table.*);
         const new_col_table_id = try vm.tables.create();
         const new_col_table = try vm.tables.get(new_col_table_id);
@@ -114,7 +103,7 @@ pub const Impl = struct {
             }
 
             // Apply the function to the row
-            const map_res = try vm.callFunctionParts(Value.new.function(@intFromEnum(f)), null, &[_]Value{ Value.new.table(row_table_id) }, null);
+            const map_res = try vm.callFunctionParts(Value.new.function(@backingInt(f)), null, &[_]Value{Value.new.table(row_table_id)}, null);
             // Add the result to the new column table
             try new_col_table.push(vm.runtime.alloc, map_res);
         }
@@ -126,7 +115,7 @@ pub const Impl = struct {
         };
         const result_table = try vm.tables.get(result_table_id);
         // Add the new column table to it with the new key
-        try result_table.put(result_table_id, vm, Value.new.str(@intFromEnum(new_col_name)), Value.new.table(new_col_table_id));
+        try result_table.put(result_table_id, vm, Value.new.str(@backingInt(new_col_name)), Value.new.table(new_col_table_id));
         // Return the resulting table
         return HostResult.data(Value.new.table(result_table_id));
     }

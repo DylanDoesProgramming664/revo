@@ -95,12 +95,12 @@ pub const Value = extern struct {
     pub inline fn boxed(t: ValueTag, val: usize) Value {
         if (val != std.math.maxInt(usize)) std.debug.assert(val <= PAYLOAD_MASK);
         const pl = @as(u64, @intCast(val)) & PAYLOAD_MASK;
-        return .{ .bits = BOX_TAG | (@as(u64, @intFromEnum(t)) << TAG_SHIFT) | pl };
+        return .{ .bits = BOX_TAG | (@as(u64, @backingInt(t)) << TAG_SHIFT) | pl };
     }
 
     pub inline fn tag(self: Value) ValueTag {
         if ((self.bits & BOX_MASK) != BOX_TAG) return .number;
-        return @enumFromInt((self.bits >> TAG_SHIFT) & TAG_MASK);
+        return @fromBackingInt(@intCast((self.bits >> TAG_SHIFT) & TAG_MASK));
     }
 
     pub inline fn is(self: Value, t: ValueTag) bool {
@@ -129,7 +129,7 @@ pub const Value = extern struct {
     }
 
     pub inline fn asStr(self: Value) ?StringID {
-        if ((self.bits & BOX_MASK) == BOX_TAG and ((self.bits >> TAG_SHIFT) & TAG_MASK) == @intFromEnum(ValueTag.string))
+        if ((self.bits & BOX_MASK) == BOX_TAG and ((self.bits >> TAG_SHIFT) & TAG_MASK) == @backingInt(ValueTag.string))
             return @intCast(self.bits & PAYLOAD_MASK);
         return null;
     }
@@ -162,28 +162,28 @@ pub const Value = extern struct {
     // tag()'s dispatch; equivalent by construction: `tag() == X` holds
     // exactly when the marker matches and the tag nibble is X
     pub inline fn asAtom(self: Value) ?AtomID {
-        if ((self.bits & BOX_MASK) == BOX_TAG and ((self.bits >> TAG_SHIFT) & TAG_MASK) == @intFromEnum(ValueTag.atom))
+        if ((self.bits & BOX_MASK) == BOX_TAG and ((self.bits >> TAG_SHIFT) & TAG_MASK) == @backingInt(ValueTag.atom))
             return @intCast(self.bits & PAYLOAD_MASK);
         return null;
     }
     pub inline fn asFunction(self: Value) ?FunctionID {
-        if ((self.bits & BOX_MASK) == BOX_TAG and ((self.bits >> TAG_SHIFT) & TAG_MASK) == @intFromEnum(ValueTag.function))
+        if ((self.bits & BOX_MASK) == BOX_TAG and ((self.bits >> TAG_SHIFT) & TAG_MASK) == @backingInt(ValueTag.function))
             return @intCast(self.bits & PAYLOAD_MASK);
         return null;
     }
     pub inline fn asTable(self: Value) ?TableID {
-        if ((self.bits & BOX_MASK) == BOX_TAG and ((self.bits >> TAG_SHIFT) & TAG_MASK) == @intFromEnum(ValueTag.table))
+        if ((self.bits & BOX_MASK) == BOX_TAG and ((self.bits >> TAG_SHIFT) & TAG_MASK) == @backingInt(ValueTag.table))
             return @intCast(self.bits & PAYLOAD_MASK);
         return null;
     }
     pub inline fn asResource(self: Value) ?ResourceID {
-        if ((self.bits & BOX_MASK) == BOX_TAG and ((self.bits >> TAG_SHIFT) & TAG_MASK) == @intFromEnum(ValueTag.resource))
+        if ((self.bits & BOX_MASK) == BOX_TAG and ((self.bits >> TAG_SHIFT) & TAG_MASK) == @backingInt(ValueTag.resource))
             return @intCast(self.bits & PAYLOAD_MASK);
         return null;
     }
 
     pub fn asOpaque(self: Value) ?*anyopaque {
-        if ((self.bits & BOX_MASK) == BOX_TAG and ((self.bits >> TAG_SHIFT) & TAG_MASK) == @intFromEnum(ValueTag.@"opaque"))
+        if ((self.bits & BOX_MASK) == BOX_TAG and ((self.bits >> TAG_SHIFT) & TAG_MASK) == @backingInt(ValueTag.@"opaque"))
             return @ptrFromInt(@as(usize, @intCast(self.bits & PAYLOAD_MASK)));
         return null;
     }
@@ -227,14 +227,14 @@ pub const Value = extern struct {
             .number, .atom => return self.bits,
             .string => {
                 var h = std.hash.Wyhash.init(0);
-                h.update(&[_]u8{@intCast(@intFromEnum(self.tag()))});
+                h.update(&[_]u8{@intCast(@backingInt(self.tag()))});
                 h.update(vm.stringValue(self.asString().?));
                 return h.final();
             },
             else => {},
         }
         var h = std.hash.Wyhash.init(0);
-        h.update(&[_]u8{@intCast(@intFromEnum(self.tag()))});
+        h.update(&[_]u8{@intCast(@backingInt(self.tag()))});
         h.update(std.mem.asBytes(&self.unboxed()));
         return h.final();
     }

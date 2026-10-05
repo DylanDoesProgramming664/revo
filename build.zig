@@ -1,6 +1,7 @@
 const bindings = @import("src/capi/header_gen.zig");
 const builtin = @import("builtin");
 const std = @import("std");
+const Translator = @import("translate_c").Translator;
 
 const Build = std.Build;
 const Module = Build.Module;
@@ -90,12 +91,13 @@ fn getFeatures(features: []const u8) Features {
     while (it.next()) |token| {
         if (emptyStr(token)) continue;
 
-        inline for (@typeInfo(Features).@"struct".fields) |field| {
-            if (std.mem.eql(u8, token, field.name)) {
-                if (@field(ret, field.name)) {
+        const info = @typeInfo(Features).@"struct";
+        inline for (info.field_names) |field_name| {
+            if (std.mem.eql(u8, token, field_name)) {
+                if (@field(ret, field_name)) {
                     std.log.warn("Duplicate feature: {s}", .{token});
                 }
-                @field(ret, field.name) = true;
+                @field(ret, field_name) = true;
                 break;
             }
         } else std.log.warn("Unknown feature: {s}", .{token});
@@ -124,17 +126,17 @@ fn binName(b: *std.Build, triple: []const u8, btype: BinaryType) []const u8 {
 pub fn build(b: *Build) !void {
     // Defaults to 'musl' toolchain for linux system because otherwise the build fails with default settings,
     // but not when enabled 'llvm' and 'lld'. -hamza (Jun 14 2026)
-    const with_glibc = builtin.os.tag == .linux and
+    const with_glibc = builtin.target.os.tag == .linux and
         (b.option(bool, "glibc", "build with LLVM and link with glibc") orelse false);
 
     const with_dynamic = b.option(bool, "dynamic", "force dynamic libc linking if available (warns if unsupported)") orelse true;
-    // if (with_dynamic and builtin.os.tag != .linux) {
+    // if (with_dynamic and builtin.target.os.tag != .linux) {
     //     logger.warn("-Ddynamic is only meaningful on linux (other platforms already use dynamic libc)", .{});
     // }
 
     const wasi_cli = b.option(bool, "wasi-cli", "build wasi target as cli (uses wasi syscalls instead of js imports)") orelse false;
 
-    const target = if (builtin.os.tag == .linux)
+    const target = if (builtin.target.os.tag == .linux)
         b.standardTargetOptions(.{ .default_target = if (with_glibc or with_dynamic) .{ .abi = .gnu } else .{ .abi = .musl } })
     else
         b.standardTargetOptions(.{});
@@ -149,7 +151,7 @@ pub fn build(b: *Build) !void {
     // botch: wasm64 has a codegen bug in Debug mode that causes "memory access out of
     // bounds" at runtime for some reason
     // force ReleaseSmall for ALL modules linked into the wasm binary, so the VM code gets the fix too
-    const effective_optimize = if (is_wasm) .ReleaseSmall else optimize;
+    const effective_optimize: std.lang.Optimize = if (is_wasm) .small else optimize;
     if (optimize != effective_optimize)
         logger.warn("Debug mode crashes wasm64 builds; forcing ReleaseSmall for all modules", .{});
 
@@ -159,7 +161,7 @@ pub fn build(b: *Build) !void {
         if (is_freestanding) "" else if (is_wasm) "lsp,regex" else "isocline,lsp,regex,mimalloc,ffi";
 
     // windows missing features: isocline (no libc), ffi (no dlopen), async (no posix threads)
-    if (builtin.os.tag == .windows) {
+    if (builtin.target.os.tag == .windows) {
         if (std.mem.find(u8, features_str, "isocline") != null) {
             logger.warn("isocline is not available on windows, disabling", .{});
         }
@@ -175,21 +177,21 @@ pub fn build(b: *Build) !void {
     ) orelse &.{};
 
     const lsp_kit_dep = b.dependency("lsp_kit", .{});
-    const mvzr_dep = b.dependency("mvzr", .{});
 
     const features = getFeatures(features_str);
 
     const mimalloc_enabled = !is_freestanding and features.mimalloc;
     const ffi_enabled = !is_freestanding and !is_wasm and target.result.os.tag != .windows and features.ffi;
 
-    var git_exit_code: u8 = 0; // ignored, but it's a required argument
-    const git_output = b.runAllowFail(
-        &.{ "git", "rev-parse", "--short", "HEAD" },
-        &git_exit_code,
-        .ignore,
-    ) catch VERSION;
+    const git_result = b.runFallible(&.{ "git", "rev-parse", "--short", "HEAD" }, .{
+        .stderr_behavior = .ignore,
+    });
+    const git_version = switch (git_result) {
+        .success => |output| output,
+        else => VERSION,
+    };
 
-    const dev_version = std.mem.trim(u8, git_output, " \n\r");
+    const dev_version = std.mem.trim(u8, git_version, " \n\r");
 
     // used for dev builds
     const debug_options = b.addOptions();
@@ -294,14 +296,9 @@ pub fn build(b: *Build) !void {
     try import_list.append(b.allocator, .{ .name = "revo", .module = revo_mod });
     try import_list.append(b.allocator, .{ .name = "vm", .module = vm_mod });
     try import_list.append(b.allocator, .{ .name = "capi", .module = c_mod });
-    // shouldn't get compiled in if regex flag unspecified
-    try import_list.append(b.allocator, .{
-        .name = "mvzr",
-        .module = builds.mvzr(b, mvzr_dep, target, effective_optimize),
-    });
     try import_list.append(b.allocator, .{ .name = "mimalloc", .module = mimalloc_mod });
     const imports = try import_list.toOwnedSlice(b.allocator);
-    const shared_build_options = if (optimize == .Debug) debug_options_mod else release_options_mod;
+    const shared_build_options = if (optimize == .debug) debug_options_mod else release_options_mod;
     for (all_mods) |mod| {
         for (imports) |imp| {
             mod.addImport(imp.name, imp.module);
@@ -312,7 +309,7 @@ pub fn build(b: *Build) !void {
     exe_mod.addImport("isocline", isocline_mod);
 
     // only linked into artifacts that reference it
-    const mimalloc_dep = if (mimalloc_enabled) b.lazyDependency("mimalloc", .{}) else null;
+    const mimalloc_dep = if (mimalloc_enabled) b.dependencyLazy("mimalloc", .{}) catch null else null;
     const mimalloc_lib = if (mimalloc_dep) |dep|
         try builds.mimalloc(b, target, effective_optimize, dep)
     else
@@ -324,10 +321,10 @@ pub fn build(b: *Build) !void {
 
     // vendored libffi, posix only; proves fetch+configure+link
     // , nothing references its symbols yet (that lands with ffi.zig)
-    const ffi_dep = if (ffi_enabled) b.lazyDependency("libffi", .{
+    const ffi_dep = if (ffi_enabled) b.dependencyLazy("libffi", .{
         .target = target,
         .optimize = effective_optimize,
-    }) else null;
+    }) catch null else null;
     var test_ffi_lib: ?*std.Build.Step.Compile = null;
     if (ffi_dep) |dep| {
         const ffi_lib = dep.artifact("ffi");
@@ -336,6 +333,29 @@ pub fn build(b: *Build) !void {
         // revo_mod carriers: tests link it directly, exes inherit it
         revo_mod.linkLibrary(ffi_lib);
         test_ffi_lib = ffi_lib;
+
+        const c_ffi: Translator = builds.translate_c_header(
+            b,
+            b.dependency("translate_c", .{}),
+            "c_ffi",
+            "ffi.h",
+            target,
+            effective_optimize,
+        );
+        c_ffi.linkLibrary(ffi_lib);
+        revo_mod.addImport("c_ffi", c_ffi.mod);
+    }
+
+    if (features.isocline and !is_freestanding) {
+        const c_signal: Translator = builds.translate_c_header(
+            b,
+            b.dependency("translate_c", .{}),
+            "c_signal",
+            "signal.h",
+            target,
+            effective_optimize,
+        );
+        exe_mod.addImport("c_signal", c_signal.mod);
     }
 
     const header_wf = b.addWriteFiles();
@@ -383,11 +403,11 @@ pub fn build(b: *Build) !void {
             lib.use_lld = false;
         }
 
-        if (optimize == .Debug) exe.lto = .none;
+        if (optimize == .debug) exe.lto = .none;
         exe.rdynamic = true;
         if (features.zig_backend) exe.use_llvm = false;
         if (features.zig_backend) exe.use_lld = false;
-        if (builtin.os.tag == .linux and with_glibc) {
+        if (builtin.target.os.tag == .linux and with_glibc) {
             exe.use_llvm = true;
             exe.use_lld = true;
         }
@@ -411,7 +431,7 @@ pub fn build(b: *Build) !void {
         const run_step = b.step("run", "run the cli");
         {
             const run_exe = b.addRunArtifact(exe);
-            run_exe.addArgs(b.args orelse &.{});
+            run_exe.addPassthruArgs();
             run_step.dependOn(&run_exe.step);
         }
 
@@ -557,7 +577,7 @@ pub fn build(b: *Build) !void {
             const release_is_wasm = release_target.result.cpu.arch.isWasm();
             const release_is_wasi = release_target.result.os.tag == .wasi;
             const release_is_wasi_cli = target_def.wasi_cli;
-            const release_optimize: std.builtin.OptimizeMode = if (release_is_wasm) .ReleaseSmall else .ReleaseSafe;
+            const release_optimize: std.lang.Optimize = if (release_is_wasm) .small else .safe;
 
             const release_lsp_enabled = features.lsp and !release_is_fs;
 
@@ -567,10 +587,15 @@ pub fn build(b: *Build) !void {
                 !release_is_wasi and
                 release_target.result.os.tag != .windows;
 
+            const release_ffi_enabled = features.ffi and
+                !release_is_fs and
+                !release_is_wasm and
+                release_target.result.os.tag != .windows;
+
             const rel_options = b.addOptions();
             rel_options.addOption(bool, "is_freestanding", release_is_fs);
             rel_options.addOption(bool, "mimalloc", !release_is_fs and mimalloc_enabled);
-            rel_options.addOption(bool, "ffi", !release_is_fs and ffi_enabled);
+            rel_options.addOption(bool, "ffi", release_ffi_enabled);
             rel_options.addOption(bool, "isocline", release_isocline_enabled);
             // TODO: regex compiles for freestanding, it isn't the issue here
             rel_options.addOption(
@@ -603,7 +628,6 @@ pub fn build(b: *Build) !void {
                 .link_libc = !release_is_fs,
             });
 
-            const rel_mvzr_mod = builds.mvzr(b, mvzr_dep, release_target, release_optimize);
             const rel_mimalloc_mod = b.createModule(.{
                 .root_source_file = b.path("src/mimalloc.zig"),
                 .target = release_target,
@@ -615,7 +639,6 @@ pub fn build(b: *Build) !void {
                 mod.addImport("revo", rel_revo_mod);
                 mod.addImport("vm", rel_vm_mod);
                 mod.addImport("capi", rel_c_mod);
-                mod.addImport("mvzr", rel_mvzr_mod);
                 mod.addImport("build_options", rel_options_mod);
             }
 
@@ -673,6 +696,37 @@ pub fn build(b: *Build) !void {
                 release_mod.linkLibrary(rel_mimalloc);
             }
 
+            if (release_ffi_enabled) {
+                const rel_c_ffi: Translator = builds.translate_c_header(
+                    b,
+                    b.dependency("translate_c", .{}),
+                    "c_ffi",
+                    "ffi.h",
+                    release_target,
+                    release_optimize,
+                );
+                if (b.dependencyLazy("libffi", .{
+                    .target = release_target,
+                    .optimize = release_optimize,
+                }) catch null) |rel_ffi_dep| {
+                    const rel_ffi_lib = rel_ffi_dep.artifact("ffi");
+                    rel_c_ffi.linkLibrary(rel_ffi_lib);
+                    release_mod.linkLibrary(rel_ffi_lib);
+                }
+                for (rel_core_mods) |mod| mod.addImport("c_ffi", rel_c_ffi.mod);
+            }
+            if (release_isocline_enabled) {
+                const rel_c_signal: Translator = builds.translate_c_header(
+                    b,
+                    b.dependency("translate_c", .{}),
+                    "c_signal",
+                    "signal.h",
+                    release_target,
+                    release_optimize,
+                );
+                release_mod.addImport("c_signal", rel_c_signal.mod);
+            }
+
             const release_exe = b.addExecutable(.{
                 .name = if (release_is_wasi_cli)
                     binName(b, "wasm32-wasi-cli", .release)
@@ -714,6 +768,7 @@ pub fn build(b: *Build) !void {
         // fucks with comments and layouts as of [git blame to check date] dont use
         // builder.addRule(.{ .builtin = .field_ordering }, .{});
         builder.addRule(.{ .builtin = .import_ordering }, .{});
+        builder.setCompileUnits(&.{.@"test"});
         break :step builder.build();
     });
     //
@@ -727,7 +782,7 @@ pub fn build(b: *Build) !void {
     //
     const chore_step = b.step("chore", "run zig fmt, check, lint, tests, c tests, lsp pytest, and rumdl fmt");
     {
-        const chore_fmt = b.addFmt(.{ .paths = &.{"."} });
+        const chore_fmt = b.addFmt(.{ .paths = b.pathList(&.{"./src"}) });
 
         const chore_check = b.addSystemCommand(&.{ "zig", "build", "check" });
         chore_check.step.dependOn(&chore_fmt.step);
@@ -745,21 +800,28 @@ pub fn build(b: *Build) !void {
         const chore_pytest = b.addSystemCommand(&.{ "python3", "-m", "pytest", "src/lsp/test.py", "-v" });
         chore_pytest.step.dependOn(&chore_test_c.step);
 
-        const chore_rumdl = b.addSystemCommand(&.{ "rumdl", "fmt", "." });
+        const chore_rumdl = b.addSystemCommand(&.{ "rumdl", "fmt", "./src" });
         chore_rumdl.step.dependOn(&chore_pytest.step);
 
         chore_step.dependOn(&chore_rumdl.step);
     }
 }
 const builds = struct {
-    fn mvzr(
+    fn translate_c_header(
         b: *Build,
-        mvzr_dep: *Build.Dependency,
+        dep: *Build.Dependency,
+        name: []const u8,
+        header: []const u8,
         target: Build.ResolvedTarget,
-        optimize: std.builtin.OptimizeMode,
-    ) *Module {
-        return b.createModule(.{
-            .root_source_file = mvzr_dep.path("src/mvzr.zig"),
+        optimize: std.lang.Optimize,
+    ) Translator {
+        const stub = b.addWriteFiles().add(
+            b.fmt("{s}_stub.h", .{name}),
+            b.fmt("#include <{s}>\n", .{header}),
+        );
+        return .init(dep, .{
+            .name = name,
+            .c_source_file = stub,
             .target = target,
             .optimize = optimize,
         });
@@ -770,18 +832,18 @@ const builds = struct {
         b: *Build,
         enabled: bool,
         target: Build.ResolvedTarget,
-        optimize: std.builtin.OptimizeMode,
+        optimize: std.lang.Optimize,
         tag: []const u8,
     ) *Module {
         if (enabled) {
-            if (b.lazyDependency("isocline", .{})) |isocline_dep| {
-                const isocline_c = b.addTranslateC(.{
-                    .root_source_file = isocline_dep.path("include/isocline.h"),
+            if (b.dependencyLazy("isocline", .{}) catch null) |isocline_dep| {
+                const translate_c_dep = b.dependency("translate_c", .{});
+                const translator: Translator = .init(translate_c_dep, .{
+                    .c_source_file = isocline_dep.path("include/isocline.h"),
                     .target = target,
                     .optimize = optimize,
                 });
-                isocline_c.addIncludePath(isocline_dep.path("include/"));
-                const mod = isocline_c.createModule();
+                const mod = translator.mod;
                 mod.addCSourceFile(.{
                     .file = isocline_dep.path("src/isocline.c"),
                     .flags = &.{},
@@ -799,7 +861,7 @@ const builds = struct {
     fn mimalloc(
         b: *Build,
         target: Build.ResolvedTarget,
-        optimize: std.builtin.OptimizeMode,
+        optimize: std.lang.Optimize,
         dep: *Build.Dependency,
     ) !*std.Build.Step.Compile {
         const lib = b.addLibrary(
@@ -841,7 +903,7 @@ const builds = struct {
                     "stats.c",
                     "prim/prim.c",
                 },
-                .flags = if (lib.root_module.optimize != .Debug)
+                .flags = if (lib.root_module.optimize != .debug)
                     &.{
                         "-DNDEBUG=1",
                         "-DMI_SECURE=0",

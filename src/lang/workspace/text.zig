@@ -216,21 +216,21 @@ fn walkRoles(n: *const ast.Node, m: *std.AutoHashMap(usize, u32)) !void {
         .call => |c| {
             try walkRoles(c.callee, m);
             switch (c.callee.expr) {
-                .ident => try m.put(c.callee.span.start, @intFromEnum(Lexer.TokenClass.function)),
-                .field => |f| try m.put(c.callee.span.end - f.name.len, @intFromEnum(Lexer.TokenClass.function)),
+                .ident => try m.put(c.callee.span.start, @backingInt(Lexer.TokenClass.function)),
+                .field => |f| try m.put(c.callee.span.end - f.name.len, @backingInt(Lexer.TokenClass.function)),
                 else => {},
             }
             if (c.implicit_self and c.callee.expr == .field)
-                try m.put(c.callee.span.end - c.callee.expr.field.name.len - 1, @intFromEnum(Lexer.TokenClass.function));
+                try m.put(c.callee.span.end - c.callee.expr.field.name.len - 1, @backingInt(Lexer.TokenClass.function));
             for (c.args) |a| try walkRoles(a, m);
         },
         .binding => |b| {
             if (b.target.expr == .ident)
-                try m.put(b.target.span.start, if (b.value.expr == .fn_expr) @intFromEnum(Lexer.TokenClass.function) else @intFromEnum(Lexer.TokenClass.variable));
+                try m.put(b.target.span.start, if (b.value.expr == .fn_expr) @backingInt(Lexer.TokenClass.function) else @backingInt(Lexer.TokenClass.variable));
             try walkRoles(b.value, m);
         },
         .field => |f| {
-            try m.put(n.span.end - f.name.len, @intFromEnum(Lexer.TokenClass.variable));
+            try m.put(n.span.end - f.name.len, @backingInt(Lexer.TokenClass.variable));
             try walkRoles(f.object, m);
         },
         .unary => |u| try walkRoles(u.expr, m),

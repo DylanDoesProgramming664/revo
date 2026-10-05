@@ -4,8 +4,6 @@ const std = @import("std");
 const VM = revo.VM;
 const print = revo.vm.print;
 
-/// zig 0.16's default debug_io pulls in Io.Threaded.global_single_threaded,
-/// and that doesnt compile for wasm32-freestanding, so we need to reuse this
 pub const std_options_debug_io: std.Io = stub_io;
 
 var wasm_alloc_state: std.heap.WasmAllocator = .{};
@@ -81,6 +79,9 @@ fn wasmIoOperate(_: ?*anyopaque, operation: std.Io.Operation) std.Io.Cancelable!
         .file_read_streaming => .{ .file_read_streaming = error.InputOutput },
         .device_io_control => .{ .device_io_control = -1 },
         .net_receive => .{ .net_receive = .{ error.NetworkDown, 0 } },
+        .net_send => .{ .net_send = .{ error.NetworkDown, 0 } },
+        .net_read => .{ .net_read = error.NetworkDown },
+        .net_write => .{ .net_write = error.NetworkDown },
     };
 }
 fn wasmIoRecancel(_: ?*anyopaque) void {}

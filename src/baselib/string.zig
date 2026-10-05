@@ -2,26 +2,26 @@ const Args = root.host.ArgTypes;
 
 pub const Impl = struct {
     pub fn len(vm: *VM, self: Args.string) !HostResult {
-        const str = vm.stringValue(@intFromEnum(self));
+        const str = vm.stringValue(@backingInt(self));
         return .data(Value.new.num(str.len));
     }
 
     pub fn upper(vm: *VM, self: Args.string) !HostResult {
-        const str = vm.stringValue(@intFromEnum(self));
+        const str = vm.stringValue(@backingInt(self));
         const buf = try vm.runtime.alloc.dupe(u8, str);
         for (buf) |*c| c.* = std.ascii.toUpper(c.*);
         return .data(try vm.adoptValueStringNoDedup(buf));
     }
 
     pub fn lower(vm: *VM, self: Args.string) !HostResult {
-        const str = vm.stringValue(@intFromEnum(self));
+        const str = vm.stringValue(@backingInt(self));
         const buf = try vm.runtime.alloc.dupe(u8, str);
         for (buf) |*c| c.* = std.ascii.toLower(c.*);
         return .data(try vm.adoptValueStringNoDedup(buf));
     }
 
     pub fn sub(vm: *VM, self: Args.string, start: Args.number, length: Args.number) !HostResult {
-        const str = vm.stringValue(@intFromEnum(self));
+        const str = vm.stringValue(@backingInt(self));
         const s = @as(i64, @intFromFloat(start));
         const l = @as(i64, @intFromFloat(length));
         if (s < 0 or l < 0 or s >= str.len) {
@@ -33,16 +33,16 @@ pub const Impl = struct {
     }
 
     pub fn replace(vm: *VM, self: Args.string, old: Args.string, new: Args.string) !HostResult {
-        const str = vm.stringValue(@intFromEnum(self));
-        const o = vm.stringValue(@intFromEnum(old));
-        const n = vm.stringValue(@intFromEnum(new));
+        const str = vm.stringValue(@backingInt(self));
+        const o = vm.stringValue(@backingInt(old));
+        const n = vm.stringValue(@backingInt(new));
         const res = try std.mem.replaceOwned(u8, vm.runtime.alloc, str, o, n);
         return .data(try vm.adoptValueStringNoDedup(res));
     }
 
     pub fn split(vm: *VM, self: Args.string, delim: Args.string) !HostResult {
-        const str = vm.stringValue(@intFromEnum(self));
-        const d = vm.stringValue(@intFromEnum(delim));
+        const str = vm.stringValue(@backingInt(self));
+        const d = vm.stringValue(@backingInt(delim));
         var parts = try std.ArrayList(Value).initCapacity(vm.runtime.alloc, 10);
         defer parts.deinit(vm.runtime.alloc);
 
@@ -65,19 +65,19 @@ pub const Impl = struct {
     }
 
     pub fn trim(vm: *VM, self: Args.string) !HostResult {
-        const str = vm.stringValue(@intFromEnum(self));
+        const str = vm.stringValue(@backingInt(self));
         return .data(try vm.ownValueStringNoDedup(std.mem.trim(u8, str, " \t\r\n")));
     }
 
     pub fn reverse(vm: *VM, self: Args.string) !HostResult {
-        const str = vm.stringValue(@intFromEnum(self));
+        const str = vm.stringValue(@backingInt(self));
         const duped = try vm.runtime.alloc.dupe(u8, str);
         std.mem.reverse(u8, duped);
         return .data(try vm.adoptValueStringNoDedup(duped));
     }
 
     pub fn table(vm: *VM, self: Args.string) !HostResult {
-        const str = vm.stringValue(@intFromEnum(self));
+        const str = vm.stringValue(@backingInt(self));
         var chars = try std.ArrayList(Value).initCapacity(vm.runtime.alloc, str.len);
         defer chars.deinit(vm.runtime.alloc);
         for (str) |byte| {
@@ -88,14 +88,14 @@ pub const Impl = struct {
     }
 
     pub fn ascii(vm: *VM, self: Args.string) !HostResult {
-        const str = vm.stringValue(@intFromEnum(self));
+        const str = vm.stringValue(@backingInt(self));
         if (str.len == 0) return .errType(0, "non-empty string", "empty string");
         return .data(Value.new.num(str[0]));
     }
 
     pub fn index_of(vm: *VM, self: Args.string, search: Args.string) !HostResult {
-        const str = vm.stringValue(@intFromEnum(self));
-        const s = vm.stringValue(@intFromEnum(search));
+        const str = vm.stringValue(@backingInt(self));
+        const s = vm.stringValue(@backingInt(search));
         if (std.mem.find(u8, str, s)) |idx| {
             return .data(Value.new.num(idx));
         }
@@ -110,8 +110,8 @@ pub const Impl = struct {
     }
 
     pub fn join(vm: *VM, tbl: Args.table, sep: Args.string) !HostResult {
-        const tbl_data = try vm.tables.get(@intFromEnum(tbl));
-        const separator = vm.stringValue(@intFromEnum(sep));
+        const tbl_data = try vm.tables.get(@backingInt(tbl));
+        const separator = vm.stringValue(@backingInt(sep));
         var buf = try std.ArrayList(u8).initCapacity(vm.runtime.alloc, 64);
         defer buf.deinit(vm.runtime.alloc);
         for (tbl_data.array.items, 0..) |item, i| {
@@ -119,7 +119,7 @@ pub const Impl = struct {
                 vm.stringValue(sid)
             else if (item.asNumOpt()) |num| blk: {
                 var fmt_buf: [64]u8 = undefined;
-                break :blk std.fmt.bufPrint(&fmt_buf, "{}", .{num}) catch "?";
+                break :blk std.mem.print(&fmt_buf, "{}", .{num}) catch "?";
             } else "?";
             try buf.appendSlice(vm.runtime.alloc, item_str);
             if (i < tbl_data.array.items.len - 1) {
@@ -130,21 +130,21 @@ pub const Impl = struct {
     }
 
     pub fn concat(vm: *VM, self: Args.string, other: Args.string) !HostResult {
-        const l_str = vm.stringValue(@intFromEnum(self));
-        const r_str = vm.stringValue(@intFromEnum(other));
-        if (l_str.len == 0) return .data(Value.new.str(@intFromEnum(other)));
-        if (r_str.len == 0) return .data(Value.new.str(@intFromEnum(self)));
+        const l_str = vm.stringValue(@backingInt(self));
+        const r_str = vm.stringValue(@backingInt(other));
+        if (l_str.len == 0) return .data(Value.new.str(@backingInt(other)));
+        if (r_str.len == 0) return .data(Value.new.str(@backingInt(self)));
         const buf = try std.mem.concat(vm.runtime.alloc, u8, &.{ l_str, r_str });
         return .data(try vm.adoptValueStringNoDedup(buf));
     }
 
     pub fn repeat(vm: *VM, self: Args.string, n: Args.number) !HostResult {
-        const str = vm.stringValue(@intFromEnum(self));
+        const str = vm.stringValue(@backingInt(self));
         const times: i64 = root.host.numToInt(i64, n) orelse return .errType(1, "integer num", "non-integer num");
         if (times < 0) return .errType(1, "non-negative num", "negative num");
         const count: usize = @intCast(times);
         if (count == 0) return .data(try vm.ownValueString(""));
-        if (count == 1) return .data(Value.new.str(@intFromEnum(self)));
+        if (count == 1) return .data(Value.new.str(@backingInt(self)));
         const total_len = std.math.mul(usize, str.len, count) catch return .other("result too large");
         const buf = try vm.runtime.alloc.alloc(u8, total_len);
         for (0..count) |i| {
@@ -154,7 +154,7 @@ pub const Impl = struct {
     }
 
     pub fn with(vm: *VM, self: Args.string, idx: Args.number, char_val: Args.any) !HostResult {
-        const str = vm.stringValue(@intFromEnum(self));
+        const str = vm.stringValue(@backingInt(self));
         const i: usize = try revo.asIndex(idx);
         if (i >= str.len) return .data(revo.Value.new.core(.missing));
 
@@ -183,23 +183,23 @@ pub const Impl = struct {
     }
 
     pub fn @"contains?"(vm: *VM, self: Args.string, arg: Args.string) !HostResult {
-        const str = vm.stringValue(@intFromEnum(self));
-        const search = vm.stringValue(@intFromEnum(arg));
+        const str = vm.stringValue(@backingInt(self));
+        const search = vm.stringValue(@backingInt(arg));
         return ._bool(std.mem.find(u8, str, search) != null);
     }
     pub fn @"starts_with?"(vm: *VM, self: Args.string, prefix: Args.string) !HostResult {
-        const str = vm.stringValue(@intFromEnum(self));
-        const pfx = vm.stringValue(@intFromEnum(prefix));
+        const str = vm.stringValue(@backingInt(self));
+        const pfx = vm.stringValue(@backingInt(prefix));
         return ._bool(std.mem.startsWith(u8, str, pfx));
     }
     pub fn @"ends_with?"(vm: *VM, self: Args.string, suffix: Args.string) !HostResult {
-        const str = vm.stringValue(@intFromEnum(self));
-        const sfx = vm.stringValue(@intFromEnum(suffix));
+        const str = vm.stringValue(@backingInt(self));
+        const sfx = vm.stringValue(@backingInt(suffix));
         return ._bool(std.mem.endsWith(u8, str, sfx));
     }
 
     pub fn @"upper?"(vm: *VM, self: Args.string) !HostResult {
-        const str = vm.stringValue(@intFromEnum(self));
+        const str = vm.stringValue(@backingInt(self));
         if (str.len == 0) return ._bool(false);
         for (str) |char| {
             if (!std.ascii.isUpper(char)) return ._bool(false);
@@ -208,7 +208,7 @@ pub const Impl = struct {
     }
 
     pub fn @"lower?"(vm: *VM, self: Args.string) !HostResult {
-        const str = vm.stringValue(@intFromEnum(self));
+        const str = vm.stringValue(@backingInt(self));
         if (str.len == 0) return ._bool(false);
         for (str) |char| {
             if (!std.ascii.isLower(char)) return ._bool(false);
@@ -217,7 +217,7 @@ pub const Impl = struct {
     }
 
     pub fn @"alnum?"(vm: *VM, self: Args.string) !HostResult {
-        const str = vm.stringValue(@intFromEnum(self));
+        const str = vm.stringValue(@backingInt(self));
         if (str.len == 0) return ._bool(false);
         for (str) |char| {
             if (!std.ascii.isAlphanumeric(char)) return ._bool(false);
@@ -226,7 +226,7 @@ pub const Impl = struct {
     }
 
     pub fn @"alpha?"(vm: *VM, self: Args.string) !HostResult {
-        const str = vm.stringValue(@intFromEnum(self));
+        const str = vm.stringValue(@backingInt(self));
         if (str.len == 0) return ._bool(false);
         for (str) |char| {
             if (!std.ascii.isAlphabetic(char)) return ._bool(false);
@@ -235,7 +235,7 @@ pub const Impl = struct {
     }
 
     pub fn @"whitespace?"(vm: *VM, self: Args.string) !HostResult {
-        const str = vm.stringValue(@intFromEnum(self));
+        const str = vm.stringValue(@backingInt(self));
         if (str.len == 0) return ._bool(false);
         for (str) |char| {
             if (!std.ascii.isWhitespace(char)) return ._bool(false);
@@ -244,7 +244,7 @@ pub const Impl = struct {
     }
 
     pub fn @"punct?"(vm: *VM, self: Args.string) !HostResult {
-        const str = vm.stringValue(@intFromEnum(self));
+        const str = vm.stringValue(@backingInt(self));
         if (str.len == 0) return ._bool(false);
         for (str) |char| {
             if (!std.ascii.isPunctuation(char)) return ._bool(false);

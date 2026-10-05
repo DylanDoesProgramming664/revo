@@ -4,7 +4,7 @@ embed revo in rust, or expose rust to revo
 
 ## requirements
 
-- zig >= 0.16 (`build.rs` checks; it builds `liberevo` out of the repo root)
+- zig >= 0.17.0 (`build.rs` checks; it builds `liberevo` out of the repo root)
 - libclang (bindgen needs it)
 - a one thread
 

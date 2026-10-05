@@ -80,10 +80,10 @@ pub const CoreAtoms = enum(usize) {
     fiber,
     __gc,
 
-    pub const lastFalse = @intFromEnum(@This().false);
+    pub const lastFalse = @backingInt(@This().false);
 
-    pub inline fn atomId(comptime a: @This()) usize {
-        return @intFromEnum(a);
+    pub inline fn atomId(a: @This()) usize {
+        return @backingInt(a);
     }
 
     pub inline fn str(comptime a: @This()) []const u8 {

@@ -25,7 +25,7 @@ pub fn resolveField(self: *VM, object: Value, key: Value, result_reg: ?@import("
             return resolveTableMiss(self, object, t, key, result_reg);
         },
         .string => {
-            const type_mt_id = self.metatables[@intFromEnum(mem.ValueTag.string)] orelse return null;
+            const type_mt_id = self.metatables[@backingInt(mem.ValueTag.string)] orelse return null;
             const mt = try self.tables.get(type_mt_id);
             if (mt.getRaw(key, self)) |value| {
                 return .{ .value = value, .from_meta = true };
@@ -50,8 +50,7 @@ pub fn resolveField(self: *VM, object: Value, key: Value, result_reg: ?@import("
                 if (idx < str.len) {
                     return .{ .value = try self.ownValueStringNoDedup(str[idx .. idx + 1]), .from_meta = false };
                 }
-                const msg = std.fmt.allocPrint(
-                    self.runtime.alloc,
+                const msg = self.runtime.alloc.print(
                     "string index {d} out of range (len {d})",
                     .{ idx, str.len },
                 ) catch return error.OutOfMemory;
@@ -61,7 +60,7 @@ pub fn resolveField(self: *VM, object: Value, key: Value, result_reg: ?@import("
             return null;
         },
         .number => {
-            const type_mt_id = self.metatables[@intFromEnum(mem.ValueTag.number)] orelse return null;
+            const type_mt_id = self.metatables[@backingInt(mem.ValueTag.number)] orelse return null;
             const mt = try self.tables.get(type_mt_id);
             if (mt.getRaw(key, self)) |value| {
                 return .{ .value = value, .from_meta = true };
@@ -69,7 +68,7 @@ pub fn resolveField(self: *VM, object: Value, key: Value, result_reg: ?@import("
             return null;
         },
         .atom => {
-            const type_mt_id = self.metatables[@intFromEnum(mem.ValueTag.atom)] orelse return null;
+            const type_mt_id = self.metatables[@backingInt(mem.ValueTag.atom)] orelse return null;
             const mt = try self.tables.get(type_mt_id);
             if (mt.getRaw(key, self)) |value| {
                 return .{ .value = value, .from_meta = true };
@@ -91,7 +90,7 @@ pub fn resolveTableMiss(self: *VM, object: Value, t: *revo.table.Table, key: Val
             return resolved;
         }
     }
-    const type_mt_id = self.metatables[@intFromEnum(mem.ValueTag.table)] orelse return null;
+    const type_mt_id = self.metatables[@backingInt(mem.ValueTag.table)] orelse return null;
     return resolveViaMetatable(self, object, key, type_mt_id, result_reg);
 }
 
@@ -154,8 +153,8 @@ pub fn setMetatable(self: *VM, val: Value, mt: ?mem.TableID) !void {
     switch (val.tag()) {
         .table => try self.setTableMetatable(val.asTable().?, mt),
         .resource => try self.setResourceMetatable(val.asResource().?, mt),
-        .number => self.metatables[@intFromEnum(mem.ValueTag.number)] = mt,
-        else => self.metatables[@intFromEnum(val.tag())] = mt,
+        .number => self.metatables[@backingInt(mem.ValueTag.number)] = mt,
+        else => self.metatables[@backingInt(val.tag())] = mt,
     }
 }
 
@@ -164,7 +163,7 @@ pub fn setTableMetatable(self: *VM, id: mem.TableID, mt: ?mem.TableID) !void {
         const tbl_ref = try self.tables.get(id);
         tbl_ref.metatable = mt;
     } else {
-        self.metatables[@intFromEnum(mem.ValueTag.table)] = mt;
+        self.metatables[@backingInt(mem.ValueTag.table)] = mt;
     }
 }
 
@@ -173,6 +172,6 @@ pub fn setResourceMetatable(self: *VM, id: mem.ResourceID, mt: ?mem.TableID) !vo
         const cell = try self.resources.get(id);
         cell.metatable = mt;
     } else {
-        self.metatables[@intFromEnum(mem.ValueTag.resource)] = mt;
+        self.metatables[@backingInt(mem.ValueTag.resource)] = mt;
     }
 }

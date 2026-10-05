@@ -41,7 +41,7 @@ pub const Impl = struct {
     }
 
     pub fn choice(vm: *VM, self: Args.table) !HostResult {
-        const table = try vm.tables.get(@intFromEnum(self));
+        const table = try vm.tables.get(@backingInt(self));
         if (table.array.items.len > 0) {
             const idx = randomNumber(usize, vm, 0, table.array.items.len - 1);
             return .data(table.array.items[idx]);

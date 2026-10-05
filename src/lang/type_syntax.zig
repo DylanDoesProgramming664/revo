@@ -220,7 +220,7 @@ const Parser = struct {
                         try fields.append(self.alloc, .{ .name = cur.text, .type_expr = try self.parseExpr(), .doc = field_doc });
                     } else {
                         const te = try self.parseExpr();
-                        const idx_name = try std.fmt.allocPrint(self.alloc, "{d}", .{pos_idx});
+                        const idx_name = try self.alloc.print("{d}", .{pos_idx});
                         pos_idx += 1;
                         try fields.append(self.alloc, .{ .name = idx_name, .type_expr = te, .doc = field_doc });
                     }

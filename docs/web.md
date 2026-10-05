@@ -64,7 +64,7 @@ the `repl.js` script hydrates all `.repl` elements on page load
 the revo compiler and runtime compile to a single `.wasm` binary via zig:
 
 ```sh
-zig build -Dtarget=wasm64-freestanding -Doptimize=ReleaseSmall
+zig build -Dtarget=wasm64-freestanding -Doptimize=small
 cp zig-out/bin/revo.wasm .priv/web/static/revo.wasm
 ```
 

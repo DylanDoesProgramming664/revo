@@ -8,7 +8,7 @@ pub const Impl = struct {
     }
 
     pub fn decode(vm: *VM, source: Args.string) !HostResult {
-        const str = vm.stringValue(@intFromEnum(source));
+        const str = vm.stringValue(@backingInt(source));
         var parsed = json.parseFromSlice(json.Value, vm.runtime.alloc, str, .{}) catch |err| {
             return HostResult.Err(vm, @errorName(err));
         };
@@ -93,7 +93,7 @@ fn writeTableJson(vm: *VM, id: revo.memory.TableID, jws: anytype) anyerror!void 
     try jws.beginObject();
     for (table.array.items, 0..) |item, idx| {
         var buf: [20]u8 = undefined;
-        const key_str = try std.fmt.bufPrint(&buf, "{d}", .{idx});
+        const key_str = try std.mem.print(&buf, "{d}", .{idx});
         try jws.objectField(key_str);
         try (JsonValue{ .vm = vm, .data = item }).jsonStringify(jws);
     }

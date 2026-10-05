@@ -37,7 +37,7 @@ pub const TablePool = struct {
     // locality) and recycled through the dead list, same as the ids.
     box_pool: std.heap.MemoryPool(Table),
     tables: std.ArrayList(?*Table),
-    marks: std.DynamicBitSet,
+    marks: std.bit_set.Dynamic,
     dead: std.ArrayList(memory.TableID),
     first: usize = alloc_pool.end,
     last: usize = alloc_pool.end,
@@ -60,7 +60,7 @@ pub const TablePool = struct {
         }
         self.box_pool.deinit(self.alloc);
         self.tables.deinit(self.alloc);
-        self.marks.deinit();
+        self.marks.deinit(self.alloc);
         self.dead.deinit(self.alloc);
         self.next.deinit(self.alloc);
     }
@@ -75,7 +75,7 @@ pub const TablePool = struct {
         }
         const id: memory.TableID = @intCast(self.tables.items.len);
         if (id >= self.marks.capacity()) {
-            try self.marks.resize(id + 1, false);
+            try self.marks.resize(self.alloc, id + 1, false);
         }
 
         const box = try self.box_pool.create(self.alloc);
@@ -142,7 +142,7 @@ pub const TablePool = struct {
     }
 
     pub fn clearMarks(self: *TablePool) void {
-        self.marks.unmanaged.unsetAll();
+        self.marks.unsetAll();
     }
 
     pub fn capacity(self: *const TablePool) usize {
@@ -235,11 +235,6 @@ pub const Table = struct {
         fn get(self: *const HashPart, key: Value, vm: *revo.VM) ?Value {
             const idx = self.lookup(key, vm) orelse return null;
             return self.buckets[idx].value;
-        }
-
-        fn getPtr(self: *HashPart, key: Value, vm: *revo.VM) ?*Value {
-            const idx = self.lookup(key, vm) orelse return null;
-            return &self.buckets[idx].value;
         }
 
         fn getOrPut(self: *HashPart, alloc: std.mem.Allocator, key: Value, vm: *revo.VM) !*Value {
@@ -377,12 +372,6 @@ pub const Table = struct {
             const val = self.get(key, vm) orelse return null;
             _ = self.remove(key, vm);
             return val;
-        }
-
-        fn clone(self: *const HashPart, alloc: std.mem.Allocator) !HashPart {
-            if (self.buckets.len == 0) return .{};
-            const cp = try alloc.dupe(Bucket, self.buckets);
-            return .{ .buckets = cp, .count = self.count, .first = self.first, .last = self.last };
         }
 
         pub const OrderedIter = struct {

@@ -2,7 +2,6 @@ const revo = @import("../root.zig");
 const root = @import("root.zig");
 const std = @import("std");
 
-const Value = revo.Value;
 const VM = revo.VM;
 const HostResult = root.host.HostResult;
 
@@ -15,7 +14,7 @@ const Args = root.host.ArgTypes;
 
 pub const Impl = struct {
     pub fn base64_encode(vm: *VM, input: Args.string) !HostResult {
-        const str = vm.stringValue(@intFromEnum(input));
+        const str = vm.stringValue(@backingInt(input));
         var out = std.Io.Writer.Allocating.init(vm.runtime.alloc);
         defer out.deinit();
         try std.base64.standard.Encoder.encodeWriter(&out.writer, str);
@@ -23,7 +22,7 @@ pub const Impl = struct {
     }
 
     pub fn base64_decode(vm: *VM, input: Args.string) !HostResult {
-        const str = vm.stringValue(@intFromEnum(input));
+        const str = vm.stringValue(@backingInt(input));
         const decoder = std.base64.standard.Decoder;
         const decoded_len = decoder.calcSizeForSlice(str) catch |err| {
             return HostResult.Err(vm, @errorName(err));
@@ -37,7 +36,7 @@ pub const Impl = struct {
     }
 
     pub fn base64url_encode(vm: *VM, input: Args.string) !HostResult {
-        const str = vm.stringValue(@intFromEnum(input));
+        const str = vm.stringValue(@backingInt(input));
         var out = std.Io.Writer.Allocating.init(vm.runtime.alloc);
         defer out.deinit();
         try std.base64.url_safe_no_pad.Encoder.encodeWriter(&out.writer, str);
@@ -45,7 +44,7 @@ pub const Impl = struct {
     }
 
     pub fn base64url_decode(vm: *VM, input: Args.string) !HostResult {
-        const str = vm.stringValue(@intFromEnum(input));
+        const str = vm.stringValue(@backingInt(input));
         const decoder = std.base64.url_safe_no_pad.Decoder;
         const decoded_len = decoder.calcSizeForSlice(str) catch |err| {
             return HostResult.Err(vm, @errorName(err));
@@ -59,7 +58,7 @@ pub const Impl = struct {
     }
 
     pub fn gzip_compress(vm: *VM, input: Args.string) !HostResult {
-        const str = vm.stringValue(@intFromEnum(input));
+        const str = vm.stringValue(@backingInt(input));
         const result = flateCompress(str, .gzip, vm.runtime.alloc) catch |err| {
             return HostResult.Err(vm, @errorName(err));
         };
@@ -67,7 +66,7 @@ pub const Impl = struct {
     }
 
     pub fn gzip_decompress(vm: *VM, input: Args.string) !HostResult {
-        const str = vm.stringValue(@intFromEnum(input));
+        const str = vm.stringValue(@backingInt(input));
         const result = flateDecompress(str, .gzip, vm.runtime.alloc) catch |err| {
             return HostResult.Err(vm, @errorName(err));
         };
@@ -75,7 +74,7 @@ pub const Impl = struct {
     }
 
     pub fn zlib_compress(vm: *VM, input: Args.string) !HostResult {
-        const str = vm.stringValue(@intFromEnum(input));
+        const str = vm.stringValue(@backingInt(input));
         const result = flateCompress(str, .zlib, vm.runtime.alloc) catch |err| {
             return HostResult.Err(vm, @errorName(err));
         };
@@ -83,7 +82,7 @@ pub const Impl = struct {
     }
 
     pub fn zlib_decompress(vm: *VM, input: Args.string) !HostResult {
-        const str = vm.stringValue(@intFromEnum(input));
+        const str = vm.stringValue(@backingInt(input));
         const result = flateDecompress(str, .zlib, vm.runtime.alloc) catch |err| {
             return HostResult.Err(vm, @errorName(err));
         };
@@ -91,7 +90,7 @@ pub const Impl = struct {
     }
 
     pub fn deflate(vm: *VM, input: Args.string) !HostResult {
-        const str = vm.stringValue(@intFromEnum(input));
+        const str = vm.stringValue(@backingInt(input));
         const result = flateCompress(str, .raw, vm.runtime.alloc) catch |err| {
             return HostResult.Err(vm, @errorName(err));
         };
@@ -99,7 +98,7 @@ pub const Impl = struct {
     }
 
     pub fn inflate(vm: *VM, input: Args.string) !HostResult {
-        const str = vm.stringValue(@intFromEnum(input));
+        const str = vm.stringValue(@backingInt(input));
         const result = flateDecompress(str, .raw, vm.runtime.alloc) catch |err| {
             return HostResult.Err(vm, @errorName(err));
         };
@@ -107,7 +106,7 @@ pub const Impl = struct {
     }
 
     pub fn zstd_decompress(vm: *VM, input: Args.string) !HostResult {
-        const str = vm.stringValue(@intFromEnum(input));
+        const str = vm.stringValue(@backingInt(input));
         var in = std.Io.Reader.fixed(str);
         var stream = zstd.Decompress.init(&in, &.{}, .{});
         const result = stream.reader.allocRemaining(vm.runtime.alloc, .limited(max_decompressed)) catch |err| {
@@ -117,7 +116,7 @@ pub const Impl = struct {
     }
 
     pub fn lzma_decompress(vm: *VM, input: Args.string) !HostResult {
-        const str = vm.stringValue(@intFromEnum(input));
+        const str = vm.stringValue(@backingInt(input));
         var in = std.Io.Reader.fixed(str);
         var buf: [8192]u8 = undefined;
         var stream = lzma.Decompress.initOptions(&in, vm.runtime.alloc, &buf, .{}, max_decompressed) catch |err| {
@@ -131,7 +130,7 @@ pub const Impl = struct {
     }
 
     pub fn xz_decompress(vm: *VM, input: Args.string) !HostResult {
-        const str = vm.stringValue(@intFromEnum(input));
+        const str = vm.stringValue(@backingInt(input));
         var in = std.Io.Reader.fixed(str);
         var buf: [8192]u8 = undefined;
         var stream = xz.Decompress.init(&in, vm.runtime.alloc, &buf) catch |err| {

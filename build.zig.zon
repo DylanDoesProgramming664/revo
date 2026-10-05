@@ -2,13 +2,13 @@
     .name = .revo,
     .version = "0.1.2",
     .fingerprint = 0xa061c797cf26ac5,
-    .minimum_zig_version = "0.16.0",
+    .minimum_zig_version = "0.17.0",
     // ALL dependencies are optional and have to remain as such, but are not yet lazy
     // TODO: handle lazy deps properly
     .dependencies = .{
         .lsp_kit = .{
-            .url = "git+https://github.com/zigtools/lsp-kit.git#b886a2b0d5cee85ecbcc3089b863f7517cc9ff7f",
-            .hash = "lsp_kit-0.1.0-bi_PL3IyDACfp1xdTnkiOHEok2YpPCCCJHuuOcNzjl1D",
+            .url = "git+https://github.com/zigtools/lsp-kit.git#d148676ace1eaecf3c703ce7d350d0e94e502ed7",
+            .hash = "lsp_kit-0.1.0-bi_PLwc2DACoR7VTz_qKFXUvtx7veHvWcTQvP9pDFLpk",
         },
         .isocline = .{
             .url = "git+https://github.com/daanx/isocline#8d6dc1ef95b1b46711e66eb23d39d4467a0fcdac",
@@ -19,18 +19,18 @@
             .url = "git+https://github.com/microsoft/mimalloc#a3ca0e5e2eb283c2c9275f30872e30252a91b66c",
             .hash = "N-V-__8AAIqlVAAxtYUqEp5MwpxhasjkxYzBd6sVeYpAYJbU",
         },
-        .mvzr = .{
-            .url = "git+https://github.com/mnemnion/mvzr.git?ref=HEAD#3efcfe339bd32e122c36b8f1db25b237f93a7ec2",
-            .hash = "mvzr-0.3.9-ZSOky6t2AQCA7efmm5EYbPb5sOdbXa4EFsUgYbQ6hZv9",
-        },
         .zlinter = .{
-            .url = "git+https://github.com/kurtwagner/zlinter?ref=0.16.x#8b10b45d33c684be4f869baf95a37c282e9db750",
-            .hash = "zlinter-0.0.1-OjQ08doQDADkvkcRq2ONICvDheGl2onZzS5upWDxFNnA",
+            .url = "git+https://github.com/kurtwagner/zlinter?ref=0.17.x#1a5e5776b02b23cce0e34d041bda712625ef71e3",
+            .hash = "zlinter-0.0.1-OjQ08eFlFQAb4BLnwZNNE3R5Dx2TI67EIpAsy2h0ZyoC",
         },
         .libffi = .{
-            .url = "git+https://github.com/allyourcodebase/libffi#29f3c29dd59402dd2112db8252beb57c3966df2d",
-            .hash = "libffi-3.5.2-QhHaJ2w4AACSdZtDZIkZWHkCpsK_GLC8DIQS8UnD24I4",
+            .url = "git+https://github.com/allyourcodebase/libffi#d2a5c0e58c031153e86470e1e272a328016eb535",
+            .hash = "libffi-3.5.2-QhHaJ3A4AAAjtUrgbo5gvqIi5mL3GGEgCuB_icyO0MOi",
             .lazy = true,
+        },
+        .translate_c = .{
+            .url = "git+https://codeberg.org/ziglang/translate-c?ref=zig-0.17.x#02ff0c523fb92a38939b04d0145c4a9602a74d56",
+            .hash = "translate_c-2.0.0-Q_BUWltOBwBYABF84EUL208pIFeUIwbBs29FmVBaafN5",
         },
     },
     .paths = .{

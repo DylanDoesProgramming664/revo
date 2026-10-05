@@ -39,9 +39,9 @@ pub const Impl = struct {
         try install.go(vm, builder_id, "command", builderCommandFn);
         try install.go(vm, builder_id, "positional", builderPositionalFn);
 
-        _ = try vm.callFunctionParts(Value.new.function(@intFromEnum(builder_fn)), null, &[_]Value{Value.new.table(builder_id)}, null);
+        _ = try vm.callFunctionParts(Value.new.function(@backingInt(builder_fn)), null, &[_]Value{Value.new.table(builder_id)}, null);
 
-        const argv = try vm.tables.get(@intFromEnum(argv_tbl));
+        const argv = try vm.tables.get(@backingInt(argv_tbl));
         var argv_buf: [128][:0]const u8 = undefined;
         const raw_len = argv.array.items.len;
         const start: usize = if (raw_len > 1) 1 else 0;
@@ -49,7 +49,7 @@ pub const Impl = struct {
         for (0..len) |i| {
             const item = argv.array.items[start + i];
             argv_buf[i] = if (item.asString()) |sid|
-                try alloc.dupeZ(u8, vm.stringValue(sid))
+                try alloc.dupeSentinel(u8, vm.stringValue(sid), 0)
             else
                 "";
         }
@@ -132,7 +132,7 @@ pub const Impl = struct {
         return .data(Value.new.table(result_id));
     }
     pub fn usage(vm: *VM, result_tbl: Args.table) !HostResult {
-        const result = Value.new.table(@intFromEnum(result_tbl));
+        const result = Value.new.table(@backingInt(result_tbl));
 
         const arg_defs_ptr = vm.getField(result, "_args") orelse return error.InvalidState;
         const cmd_defs_ptr = vm.getField(result, "_cmds") orelse return error.InvalidState;

@@ -12,7 +12,7 @@ const Opcode = opcode.Opcode;
 
 pub const enabled: bool = build_options.perf;
 
-pub const OPCODE_COUNT: usize = @typeInfo(Opcode).@"enum".fields.len;
+pub const OPCODE_COUNT: usize = @typeInfo(Opcode).@"enum".field_names.len;
 
 pub const PerfCounters = struct {
     opcode_counts: [OPCODE_COUNT]u64 = @splat(0),
@@ -29,12 +29,12 @@ pub const PerfCounters = struct {
     }
 
     pub fn countOp(self: *PerfCounters, op: Opcode) void {
-        self.opcode_counts[@intFromEnum(op)] += 1;
+        self.opcode_counts[@backingInt(op)] += 1;
         self.total += 1;
     }
 
     pub fn countOpN(self: *PerfCounters, op: Opcode, n: usize) void {
-        self.opcode_counts[@intFromEnum(op)] += n;
+        self.opcode_counts[@backingInt(op)] += n;
         self.total += n;
     }
 };
@@ -57,7 +57,7 @@ pub fn printReport(counters: *const PerfCounters) void {
     for (order) |idx| {
         const n = counters.opcode_counts[idx];
         if (n == 0) break;
-        const op: Opcode = @enumFromInt(idx);
+        const op: Opcode = @fromBackingInt(@intCast(idx));
         const pct = @as(f64, @floatFromInt(n)) * 100.0 / @as(f64, @floatFromInt(@max(counters.total, 1)));
         std.debug.print("|   {s: <18} {d: >10} ({d:.1}%)\n", .{ @tagName(op), n, pct });
     }
@@ -69,9 +69,9 @@ test "counters reset and count" {
     c.countOpN(.call, 3);
     c.gc_runs += 1;
     try std.testing.expectEqual(@as(u64, 4), c.total);
-    try std.testing.expectEqual(@as(u64, 1), c.opcode_counts[@intFromEnum(Opcode.add)]);
-    try std.testing.expectEqual(@as(u64, 3), c.opcode_counts[@intFromEnum(Opcode.call)]);
-    try std.testing.expectEqual(@as(u64, 0), c.opcode_counts[@intFromEnum(Opcode.ret)]);
+    try std.testing.expectEqual(@as(u64, 1), c.opcode_counts[@backingInt(Opcode.add)]);
+    try std.testing.expectEqual(@as(u64, 3), c.opcode_counts[@backingInt(Opcode.call)]);
+    try std.testing.expectEqual(@as(u64, 0), c.opcode_counts[@backingInt(Opcode.ret)]);
     c.reset();
     try std.testing.expectEqual(@as(u64, 0), c.total);
     try std.testing.expectEqual(@as(u64, 0), c.gc_runs);

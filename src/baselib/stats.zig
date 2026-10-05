@@ -7,7 +7,6 @@ const table_std = @import("table.zig");
 const Args = root.host.ArgTypes;
 
 const math = std.math;
-const typeof = root.typeof;
 const memory = revo.memory;
 const Value = memory.Value;
 const VM = revo.VM;
@@ -100,13 +99,13 @@ const RunningStats = struct {
         }
 
         const nf = self.n_float();
-        
+
         // 1. Calculate deltas
         const delta = x - self.mom1;
         const delta_n = delta / nf;
         const delta_n2 = delta_n * delta_n;
         const term1 = delta * delta_n * (nf - 1);
-        
+
         // 2. Compute the exact increments
         const delta_mom4 = term1 * delta_n2 * (nf * nf - 3.0 * nf + 3.0) + (6.0 * delta_n2 * self.mom2) - (4.0 * delta_n * self.mom3);
         const delta_mom3 = term1 * delta_n * (nf - 2.0) - (3.0 * delta_n * self.mom2);
@@ -119,7 +118,7 @@ const RunningStats = struct {
         const t4 = self.mom4 + y4;
         self.cmp4 = (t4 - self.mom4) - y4;
         self.mom4 = t4;
-        
+
         // Accumulate mom3
         const y3 = delta_mom3 - self.cmp3;
         const t3 = self.mom3 + y3;
@@ -352,7 +351,7 @@ test "RunningRegress struct and methods" {
 
 pub const Impl = struct {
     fn buildStats(vm: *VM, table_id: Args.table) !RunningStats {
-        const table = try vm.tables.get(@intFromEnum(table_id));
+        const table = try vm.tables.get(@backingInt(table_id));
 
         if (table.array.items.len == 0) {
             return error.EmptyTable;
@@ -384,7 +383,7 @@ pub const Impl = struct {
     /// > stats.frequencies(table) -> table<any>
     /// returns a histogram of element frequencies as table (ele: freq)
     pub fn frequencies(vm: *VM, table_id: Args.table) !HostResult {
-        const table = try vm.tables.get(@intFromEnum(table_id));
+        const table = try vm.tables.get(@backingInt(table_id));
         for (table.array.items) |ele| {
             if (!ele.isNumber()) return nonnumeric_frequencies(vm, table_id);
         }
@@ -404,7 +403,7 @@ pub const Impl = struct {
     }
 
     fn nonnumeric_frequencies(vm: *VM, table_id: Args.table) !HostResult {
-        const table = try vm.tables.get(@intFromEnum(table_id));
+        const table = try vm.tables.get(@backingInt(table_id));
         const result_table_id = try vm.tables.create();
         const result = try vm.tables.get(result_table_id);
 
@@ -429,7 +428,7 @@ pub const Impl = struct {
         };
 
         // can safely unwrap because sort() does not return an error
-        const res = (try table_methods.sort(vm, @enumFromInt(copied_table_id))).ok.asTable().?;
+        const res = (try table_methods.sort(vm, @fromBackingInt(@intCast(copied_table_id)))).ok.asTable().?;
 
         // good hygiene to drill the latest id you have
         const sorted_table = try vm.tables.get(res);
@@ -453,7 +452,7 @@ pub const Impl = struct {
     // stats.mode(table) -> num
     // Most frequent occuring value of input data.
     pub fn mode(vm: *VM, table_id: Args.table) !HostResult {
-        const table = try vm.tables.get(@intFromEnum(table_id));
+        const table = try vm.tables.get(@backingInt(table_id));
 
         if (table.array.items.len == 0) {
             return .errType(
@@ -470,7 +469,7 @@ pub const Impl = struct {
     }
 
     fn nonnumeric_mode(vm: *VM, table_id: Args.table) !HostResult {
-        const table = try vm.tables.get(@intFromEnum(table_id));
+        const table = try vm.tables.get(@backingInt(table_id));
         const data = table.array.items;
 
         var freq = std.AutoHashMap(Value, usize).init(vm.runtime.alloc);
@@ -552,8 +551,8 @@ pub const Impl = struct {
     }
 
     fn buildRegress(vm: *VM, table_1_id: Args.table, table_2_id: Args.table) !RunningRegress {
-        const table_1 = try vm.tables.get(@intFromEnum(table_1_id));
-        const table_2 = try vm.tables.get(@intFromEnum(table_2_id));
+        const table_1 = try vm.tables.get(@backingInt(table_1_id));
+        const table_2 = try vm.tables.get(@backingInt(table_2_id));
 
         if (table_1.array.items.len == 0 or table_2.array.items.len == 0) {
             return error.EmptyTable;
@@ -566,12 +565,6 @@ pub const Impl = struct {
         errdefer runningRegress.deinit();
         try runningRegress.pushTableValue(table_1.array.items, table_2.array.items);
         return runningRegress;
-    }
-
-    fn numRegress(vm: *VM, table_1_id: Args.table, table_2_id: Args.table, comptime compute: fn (*RunningRegress) f64) !HostResult {
-        var runningRegress = buildRegress(vm, table_1_id, table_2_id) catch |e| return statsErrResult(e);
-        defer runningRegress.deinit();
-        return .data(Value.new.num(compute(&runningRegress)));
     }
 
     // stats.regression(table) -> table

@@ -66,7 +66,7 @@ pub const Impl = struct {
     pub fn gensym(vm: *VM) !host.HostResult {
         const n = vm.runtime.gensym_counter;
         vm.runtime.gensym_counter += 1;
-        const name = try std.fmt.allocPrint(vm.runtime.alloc, "__gensym_{d}", .{n});
+        const name = try vm.runtime.alloc.print( "__gensym_{d}", .{n});
         defer vm.runtime.alloc.free(name);
         return .data(try vm.ownValueStringNoDedup(name));
     }
@@ -862,11 +862,11 @@ pub fn callUnaryMetamethod(mm: Value, val: Value, vm: *VM) host.HostResult {
 
 // type utils
 pub fn registerTypePredicates(vm: *VM) !void {
-    inline for (@typeInfo(revo.memory.ValueTag).@"enum".fields) |field| {
+    inline for (@typeInfo(revo.memory.ValueTag).@"enum".field_names) |field_name| {
         const func = struct {
             fn is_of(args: []const Value, _: *VM) !host.HostResult {
                 for (args) |arg| {
-                    if (arg.tag() != @field(revo.memory.ValueTag, field.name)) {
+                    if (arg.tag() != @field(revo.memory.ValueTag, field_name)) {
                         return ._bool(false);
                     }
                 }
@@ -877,7 +877,7 @@ pub fn registerTypePredicates(vm: *VM) !void {
             &[1]host.ParamType{.any},
             func,
         ) });
-        const atom = try vm.internAtom(field.name ++ "?");
+        const atom = try vm.internAtom(field_name ++ "?");
         const val = Value.new.function(id);
         try vm.user_globals.put(atom, val);
         try vm.builtin_globals.put(atom, val);

@@ -1,4 +1,4 @@
-const mvzr = @import("mvzr");
+const mvzr = @import("vendor/mvzr.zig");
 
 const revo = @import("../root.zig");
 const Value = revo.Value;
@@ -14,7 +14,7 @@ pub const Impl = struct {
         return compile(vm, pattern);
     }
     pub fn compile(vm: *VM, pattern: Args.string) !HostResult {
-        const pattern_str = try vm.runtime.alloc.dupe(u8, vm.stringValue(@intFromEnum(pattern)));
+        const pattern_str = try vm.runtime.alloc.dupe(u8, vm.stringValue(@backingInt(pattern)));
         defer vm.runtime.alloc.free(pattern_str);
 
         const regex = try vm.runtime.alloc.create(mvzr.Regex);
@@ -26,7 +26,7 @@ pub const Impl = struct {
 
         const tid = try vm.tables.create();
         try vm.putField(tid, "_ptr", Value.new.@"opaque"(@ptrCast(regex)));
-        try vm.putField(tid, "_pattern", Value.new.str(@intFromEnum(pattern)));
+        try vm.putField(tid, "_pattern", Value.new.str(@backingInt(pattern)));
 
         const gc_fn_id = try vm.installHost("__regex_gc", .{
             .arity = 1,
@@ -45,7 +45,7 @@ pub const Impl = struct {
         const r = resolveRegex(val, vm) catch return ._bool(false);
         const owned = r.owned;
         defer if (owned) vm.runtime.alloc.destroy(r.regex);
-        const hay = vm.stringValue(@intFromEnum(haystack));
+        const hay = vm.stringValue(@backingInt(haystack));
         return ._bool(r.regex.isMatch(hay));
     }
 
@@ -53,7 +53,7 @@ pub const Impl = struct {
         const r = resolveRegex(val, vm) catch return .data(Value.new.nil());
         const owned = r.owned;
         defer if (owned) vm.runtime.alloc.destroy(r.regex);
-        const hay = vm.stringValue(@intFromEnum(haystack));
+        const hay = vm.stringValue(@backingInt(haystack));
         if (r.regex.match(hay)) |m| {
             return .data(try vm.ownValueString(m.slice));
         }
@@ -66,7 +66,7 @@ pub const Impl = struct {
         const it_id = try vm.tables.create();
 
         try vm.putField(it_id, "_ptr", Value.new.@"opaque"(@ptrCast(r.regex)));
-        try vm.putField(it_id, "haystack", Value.new.str(@intFromEnum(haystack)));
+        try vm.putField(it_id, "haystack", Value.new.str(@backingInt(haystack)));
         try vm.putField(it_id, "pos", Value.new.num(0));
 
         if (r.owned) {
@@ -93,7 +93,7 @@ pub const Impl = struct {
     }
 
     pub fn free(vm: *VM, tbl: Args.table) !HostResult {
-        const val = Value.new.table(@intFromEnum(tbl));
+        const val = Value.new.table(@backingInt(tbl));
         const ptr_val = vm.getField(val, "_ptr") orelse
             return .data(Value.new.nil());
         const regex_ptr = ptr_val.asOpaque().?;
@@ -101,7 +101,7 @@ pub const Impl = struct {
 
         _ = vm.removeField(val, "_ptr");
         vm.runtime.alloc.destroy(regex);
-        vm.unregisterFinalizer(@intFromEnum(tbl));
+        vm.unregisterFinalizer(@backingInt(tbl));
 
         return .data(Value.new.nil());
     }

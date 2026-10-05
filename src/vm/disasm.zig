@@ -76,7 +76,7 @@ pub fn printDisassembly(vm: *revo.VM, bytecode: revo.lang.Bytecode, source: []co
 }
 
 fn fmt(buf: []u8, comptime format: []const u8, args: anytype) []const u8 {
-    return std.fmt.bufPrint(buf, format, args) catch buf[0..0];
+    return std.mem.print(buf, format, args) catch buf[0..0];
 }
 
 /// render a constant pool value for load_const operands

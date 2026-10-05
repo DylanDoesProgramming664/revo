@@ -14,7 +14,7 @@ const Table = revo.table.Table;
 
 pub const Impl = struct {
     pub fn decode(vm: *VM, self: Args.string) !HostResult {
-        const source = vm.stringValue(@intFromEnum(self));
+        const source = vm.stringValue(@backingInt(self));
         const uri = try std.Uri.parse(source);
         const root_id = try vm.tables.create();
 
@@ -32,7 +32,7 @@ pub const Impl = struct {
     pub fn encode(vm: *VM, self: Args.table) !HostResult {
         var out = std.Io.Writer.Allocating.init(vm.runtime.alloc);
         defer out.deinit();
-        const val = Value.new.table(@intFromEnum(self));
+        const val = Value.new.table(@backingInt(self));
 
         try writePart(val, "scheme", null, ":", &out.writer, vm);
         try writeAuthority(val, &out.writer, vm);
