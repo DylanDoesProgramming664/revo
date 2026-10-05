@@ -28,6 +28,8 @@ const HostFunc = root.host.HostFunc;
 pub const regex_on = @import("build_options").regex;
 pub const ffi_on = @import("build_options").ffi;
 pub const http_on = !revo.is_freestanding;
+pub const fs_on = !revo.is_freestanding;
+pub const net_on = !revo.is_freestanding;
 
 /// the zig side of one spec: registry key + implementation
 pub const Impl = struct {
@@ -307,7 +309,9 @@ fn dropDisabledModules(alloc: std.mem.Allocator, specs: []FnSpec) ![]FnSpec {
         const disabled = s.head.kind == .namespaced and s.head.module != null and
             ((std.mem.eql(u8, s.head.module.?, "re") and !regex_on) or
                 (std.mem.eql(u8, s.head.module.?, "ffi") and !ffi_on) or
-                (std.mem.eql(u8, s.head.module.?, "http") and !http_on));
+                (std.mem.eql(u8, s.head.module.?, "http") and !http_on) or
+                (std.mem.eql(u8, s.head.module.?, "fs") and !fs_on) or
+                (std.mem.eql(u8, s.head.module.?, "net") and !net_on));
         if (disabled) {
             s.deinit(alloc);
             continue;
