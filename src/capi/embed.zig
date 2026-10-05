@@ -68,7 +68,7 @@ fn compileProgram(inner: *revo.VM, name: []const u8, source: []const u8) ?*Progr
         .err => |failure| blk: {
             var buf = std.Io.Writer.Allocating.init(self.alloc);
             defer buf.deinit();
-            revo.lang.renderError(self.alloc, &buf.writer, .{ .name = name, .text = source }, failure) catch {
+            revo.lang.renderError(self.alloc, &buf.writer, .{ .name = name, .text = source }, failure, .{ .color = false }) catch {
                 self.last_error = self.alloc.dupeSentinel(u8, "compile error", 0) catch null;
                 inner.runtime.resetDiagArena();
                 break :blk null;
@@ -109,7 +109,7 @@ fn runProgram(inner: *revo.VM, program: *Program, out_value: ?*ErevoValue) bool 
         .err => |failure| blk: {
             var buf = std.Io.Writer.Allocating.init(self.alloc);
             defer buf.deinit();
-            failure.render(self.alloc, &buf.writer, program.source) catch {
+            failure.render(self.alloc, &buf.writer, program.source, false) catch {
                 self.last_error = self.alloc.dupeSentinel(u8, "runtime error", 0) catch null;
                 inner.runtime.resetDiagArena();
                 break :blk false;
