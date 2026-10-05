@@ -55,7 +55,7 @@ REVO_PAYLOAD_MASK :: 0x0000FFFFFFFFFFFF
 
 // function ptr type; returns REVO_OK (0), anything else raises
 // (`*out` used on ok only, ignored on err)
-RevoFn :: proc "c" (vm: rawptr, argc: uint, argv: ^RevoValue, out_result: ^RevoValue) -> int
+RevoFn :: proc "c" (vm: rawptr, argc: c.size_t, argv: ^RevoValue, out_result: ^RevoValue) -> int
 
 // c errors, returned directly (`return revo_c_err_arity(...)`)
 REVO_OK :: 0
@@ -74,16 +74,16 @@ foreign lib {
 	/// intern a byte slice, returns stable string id (0 on failure)
 	/// `ptr` is borrowed for the call only (not null-terminated)
 	/// , `len` is the byte count
-	intern :: proc(vm_ptr: rawptr, ptr: cstring, len: uint) -> u64 ---
+	intern :: proc(vm_ptr: rawptr, ptr: cstring, len: c.size_t) -> u64 ---
 
 	/// intern a byte slice as an atom, returns stable atom id (0 on failure)
-	intern_atom :: proc(vm_ptr: rawptr, ptr: cstring, len: uint) -> u64 ---
+	intern_atom :: proc(vm_ptr: rawptr, ptr: cstring, len: c.size_t) -> u64 ---
 
 	/// look up a global variable by name, returns nil if missing
-	getglobal :: proc(vm_ptr: rawptr, name: cstring, name_len: uint) -> RevoValue ---
+	getglobal :: proc(vm_ptr: rawptr, name: cstring, name_len: c.size_t) -> RevoValue ---
 
 	/// set a global variable by name
-	setglobal :: proc(vm_ptr: rawptr, name: cstring, name_len: uint, value: RevoValue) ---
+	setglobal :: proc(vm_ptr: rawptr, name: cstring, name_len: c.size_t, value: RevoValue) ---
 
 	/// create a new empty table, returns nil on failure
 	table_create :: proc(vm_ptr: rawptr) -> RevoValue ---
@@ -116,10 +116,10 @@ foreign lib {
 	table_from_items :: proc(vm_ptr: rawptr, count: u64, items: ^RevoValue) -> RevoValue ---
 
 	/// name-keyed write (interns the name); false on bad table or failure
-	table_set_name :: proc(vm_ptr: rawptr, table: RevoValue, name: cstring, name_len: uint, value: RevoValue) -> bool ---
+	table_set_name :: proc(vm_ptr: rawptr, table: RevoValue, name: cstring, name_len: c.size_t, value: RevoValue) -> bool ---
 
 	/// name-keyed raw read; true and `out` set when present
-	table_get_name :: proc(vm_ptr: rawptr, table: RevoValue, name: cstring, name_len: uint, out: ^RevoValue) -> bool ---
+	table_get_name :: proc(vm_ptr: rawptr, table: RevoValue, name: cstring, name_len: c.size_t, out: ^RevoValue) -> bool ---
 
 	/// `{:ok, payload}` constructor for host results, nil on failure
 	ok :: proc(vm_ptr: rawptr, payload: RevoValue) -> RevoValue ---
@@ -146,7 +146,7 @@ foreign lib {
 	/// the name is borrowed, keep it static
 	/// empty name when len is 0 (name may be null then)
 	/// nil on null fn or allocation failure
-	cfunc_new :: proc(vm_ptr: rawptr, fn_ptr: rawptr, name: cstring, name_len: uint) -> RevoValue ---
+	cfunc_new :: proc(vm_ptr: rawptr, fn_ptr: rawptr, name: cstring, name_len: c.size_t) -> RevoValue ---
 
 	/// return pointer to interned string data (null on failure, valid until next GC sweep)
 	string_data :: proc(vm_ptr: rawptr, id: u64) -> cstring ---
