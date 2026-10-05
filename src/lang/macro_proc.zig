@@ -469,7 +469,7 @@ fn encodeExpr(allocator: std.mem.Allocator, node: *const Node, splices: []const 
     // so it compiles as a variable reference instead of an encoded ident node
     if (node.expr == .ident) {
         for (splices, 0..) |splice, i| {
-            const ph = try std.fmt.allocPrint(allocator, "__qq_{d}", .{i});
+            const ph = try allocator.print( "__qq_{d}", .{i});
             if (std.mem.eql(u8, node.expr.ident, ph)) {
                 return ast.allocNode(allocator, node.span, .{ .ident = splice });
             }

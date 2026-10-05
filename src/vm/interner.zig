@@ -12,7 +12,7 @@ pub const Interner = @This();
 
 alloc: std.mem.Allocator,
 slots: std.ArrayList(?[]u8),
-marks: std.DynamicBitSet,
+marks: std.bit_set.Dynamic,
 dead: std.ArrayList(memory.StringID),
 by_name: std.StringHashMap(memory.StringID),
 
@@ -21,12 +21,12 @@ pub fn init(alloc: std.mem.Allocator) !Interner {
     var self = Interner{
         .alloc = alloc,
         .slots = try std.ArrayList(?[]u8).initCapacity(alloc, core_atom_names.len),
-        .marks = try std.DynamicBitSet.initEmpty(alloc, 64),
+        .marks = try std.bit_set.Dynamic.initEmpty(alloc, 64),
         .dead = .empty,
         .by_name = std.StringHashMap(memory.StringID).init(alloc),
     };
     errdefer self.slots.deinit(alloc);
-    errdefer self.marks.deinit();
+    errdefer self.marks.deinit(self.alloc);
 
     inline for (core_atom_names) |atom_name| {
         _ = try self.own(atom_name);
@@ -40,7 +40,7 @@ pub fn deinit(self: *Interner) void {
     }
     self.by_name.deinit();
     self.slots.deinit(self.alloc);
-    self.marks.deinit();
+    self.marks.deinit(self.alloc);
     self.dead.deinit(self.alloc);
 }
 
@@ -52,7 +52,7 @@ pub fn adoptNoDedup(self: *Interner, owned: []u8) !memory.StringID {
     const id: memory.StringID = @intCast(self.slots.items.len);
     try self.slots.append(self.alloc, owned);
     if (id >= self.marks.capacity()) {
-        try self.marks.resize(self.slots.items.len, false);
+        try self.marks.resize(self.alloc, self.slots.items.len, false);
     }
     return id;
 }
@@ -112,7 +112,7 @@ pub fn sweep(self: *Interner) void {
         maybe_s.* = null;
         self.dead.appendAssumeCapacity(@intCast(idx));
     }
-    self.marks.unmanaged.unsetAll();
+    self.marks.unsetAll();
 }
 
 pub fn contains(self: *Interner, id: memory.StringID) bool {
@@ -131,7 +131,7 @@ pub fn bytes(self: *const Interner) usize {
 }
 
 pub fn clearMarks(self: *Interner) void {
-    self.marks.unmanaged.unsetAll();
+    self.marks.unsetAll();
 }
 
 pub fn capacity(self: *const Interner) usize {

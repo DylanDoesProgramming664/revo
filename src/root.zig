@@ -172,7 +172,7 @@ pub fn resolve(raw_path: []const u8, base_dir: ?[]const u8, io: std.Io, alloc: s
 
     const root_dir = std.Io.Dir.cwd().realPathFileAlloc(io, base_dir orelse ".", alloc) catch return error.IoError;
     defer alloc.free(root_dir);
-    return std.Io.Dir.path.resolve(alloc, &.{ root_dir, raw_path }) catch return error.OutOfMemory;
+    return std.Io.Dir.path.resolveAlloc(alloc, &.{ root_dir, raw_path }) catch return error.OutOfMemory;
 }
 
 /// resolve an import path the same way compile-time preload and the runtime
@@ -189,10 +189,10 @@ pub fn resolveImportFile(
     if (raw_path.len > 0 and raw_path[0] == '.') {
         if (import_dir) |dir| {
             if (try probeImportFile(io, alloc, dir, raw_path)) |p| return p;
-            const with_ext = try std.fmt.allocPrint(alloc, "{s}.rv", .{raw_path});
+            const with_ext = try alloc.print("{s}.rv", .{raw_path});
             defer alloc.free(with_ext);
             if (try probeImportFile(io, alloc, dir, with_ext)) |p| return p;
-            const init = try std.fmt.allocPrint(alloc, "{s}/init.rv", .{raw_path});
+            const init = try alloc.print("{s}/init.rv", .{raw_path});
             defer alloc.free(init);
             if (try probeImportFile(io, alloc, dir, init)) |p| return p;
         }
@@ -208,35 +208,35 @@ pub fn resolveImportFile(
     // project root, then package paths
     if (import_dir) |dir| {
         if (try probeImportFile(io, alloc, dir, raw_path)) |p| return p;
-        const with_ext = try std.fmt.allocPrint(alloc, "{s}.rv", .{raw_path});
+        const with_ext = try alloc.print("{s}.rv", .{raw_path});
         defer alloc.free(with_ext);
         if (try probeImportFile(io, alloc, dir, with_ext)) |p| return p;
-        const init = try std.fmt.allocPrint(alloc, "{s}/init.rv", .{raw_path});
+        const init = try alloc.print("{s}/init.rv", .{raw_path});
         defer alloc.free(init);
         if (try probeImportFile(io, alloc, dir, init)) |p| return p;
     }
 
     if (project_root.len > 0) {
         if (try probeImportFile(io, alloc, project_root, raw_path)) |p| return p;
-        const pr_ext = try std.fmt.allocPrint(alloc, "{s}.rv", .{raw_path});
+        const pr_ext = try alloc.print("{s}.rv", .{raw_path});
         defer alloc.free(pr_ext);
         if (try probeImportFile(io, alloc, project_root, pr_ext)) |p| return p;
-        const pr_init = try std.fmt.allocPrint(alloc, "{s}/init.rv", .{raw_path});
+        const pr_init = try alloc.print("{s}/init.rv", .{raw_path});
         defer alloc.free(pr_init);
         if (try probeImportFile(io, alloc, project_root, pr_init)) |p| return p;
     }
 
     for (package_path) |tmpl| {
         const sub = if (std.mem.findScalar(u8, tmpl, '?')) |pos|
-            try std.fmt.allocPrint(alloc, "{s}{s}{s}", .{ tmpl[0..pos], raw_path, tmpl[pos + 1 ..] })
+            try alloc.print("{s}{s}{s}", .{ tmpl[0..pos], raw_path, tmpl[pos + 1 ..] })
         else
             try alloc.dupe(u8, tmpl);
         defer alloc.free(sub);
         if (try probeImportFile(io, alloc, null, sub)) |p| return p;
-        const sub_ext = try std.fmt.allocPrint(alloc, "{s}.rv", .{sub});
+        const sub_ext = try alloc.print("{s}.rv", .{sub});
         defer alloc.free(sub_ext);
         if (try probeImportFile(io, alloc, null, sub_ext)) |p| return p;
-        const sub_init = try std.fmt.allocPrint(alloc, "{s}/init.rv", .{sub});
+        const sub_init = try alloc.print("{s}/init.rv", .{sub});
         defer alloc.free(sub_init);
         if (try probeImportFile(io, alloc, null, sub_init)) |p| return p;
     }
@@ -252,11 +252,11 @@ fn probeImportFile(
     name: []const u8,
 ) !?[]const u8 {
     const joined = if (dir) |d|
-        std.Io.Dir.path.resolve(alloc, &.{ d, name }) catch |err| switch (err) {
+        std.Io.Dir.path.resolveAlloc(alloc, &.{ d, name }) catch |err| switch (err) {
             error.OutOfMemory => |e| return e,
         }
     else
-        std.Io.Dir.path.resolve(alloc, &.{name}) catch |err| switch (err) {
+        std.Io.Dir.path.resolveAlloc(alloc, &.{name}) catch |err| switch (err) {
             error.OutOfMemory => |e| return e,
         };
     defer alloc.free(joined);

@@ -134,7 +134,7 @@ pub const FunctionPool = struct {
     // *Upvalue from get() survives later create() calls.
     function_box_pool: std.heap.MemoryPool(Function),
     functions: std.ArrayList(?*Function),
-    function_marks: std.DynamicBitSet,
+    function_marks: std.bit_set.Dynamic,
     function_dead: std.ArrayList(mem.FunctionID),
     function_first: usize = alloc_pool.end,
     function_last: usize = alloc_pool.end,
@@ -142,7 +142,7 @@ pub const FunctionPool = struct {
     templates: std.ArrayList(FuncTemplate),
     upvalue_box_pool: std.heap.MemoryPool(Upvalue),
     upvalues: std.ArrayList(?*Upvalue),
-    upvalue_marks: std.DynamicBitSet,
+    upvalue_marks: std.bit_set.Dynamic,
     upvalue_dead: std.ArrayList(UpvalueID),
     upvalue_first: usize = alloc_pool.end,
     upvalue_last: usize = alloc_pool.end,
@@ -185,12 +185,12 @@ pub const FunctionPool = struct {
         self.function_box_pool.deinit(self.alloc);
         self.upvalue_box_pool.deinit(self.alloc);
         self.functions.deinit(self.alloc);
-        self.function_marks.deinit();
+        self.function_marks.deinit(self.alloc);
         self.function_dead.deinit(self.alloc);
         self.function_next.deinit(self.alloc);
         self.templates.deinit(self.alloc);
         self.upvalues.deinit(self.alloc);
-        self.upvalue_marks.deinit();
+        self.upvalue_marks.deinit(self.alloc);
         self.upvalue_dead.deinit(self.alloc);
         self.upvalue_next.deinit(self.alloc);
         self.segments.deinit(self.alloc);
@@ -373,8 +373,8 @@ pub const FunctionPool = struct {
     }
 
     pub fn clearMarks(self: *FunctionPool) void {
-        self.function_marks.unmanaged.unsetAll();
-        self.upvalue_marks.unmanaged.unsetAll();
+        self.function_marks.unsetAll();
+        self.upvalue_marks.unsetAll();
     }
 
     pub fn capacity(self: *const FunctionPool) usize {

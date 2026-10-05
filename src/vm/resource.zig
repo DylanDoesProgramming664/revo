@@ -26,7 +26,7 @@ pub const ResourcePool = struct {
     // boxed like tables: get() stays valid across create()
     box_pool: std.heap.MemoryPool(Resource),
     resources: std.ArrayList(?*Resource),
-    marks: std.DynamicBitSet,
+    marks: std.bit_set.Dynamic,
     dead: std.ArrayList(mem.ResourceID),
     first: usize = alloc_pool.end,
     last: usize = alloc_pool.end,
@@ -46,7 +46,7 @@ pub const ResourcePool = struct {
     pub fn deinit(self: *ResourcePool) void {
         self.box_pool.deinit(self.alloc);
         self.resources.deinit(self.alloc);
-        self.marks.deinit();
+        self.marks.deinit(self.alloc);
         self.dead.deinit(self.alloc);
         self.next.deinit(self.alloc);
     }

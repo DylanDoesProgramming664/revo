@@ -41,7 +41,7 @@ pub fn create(
     comptime ID: type,
     box_pool: *std.heap.MemoryPool(T),
     items: *std.ArrayList(?*T),
-    marks: *std.DynamicBitSet,
+    marks: *std.bit_set.Dynamic,
     dead: *std.ArrayList(ID),
     first: *usize,
     last: *usize,
@@ -58,7 +58,7 @@ pub fn create(
     }
     const id: ID = @intCast(items.items.len);
     if (id >= marks.capacity()) {
-        try marks.resize(id + 1, false);
+        try marks.resize(alloc, id + 1, false);
     }
     const box = try box_pool.create(alloc);
     errdefer box_pool.destroy(box);
@@ -82,7 +82,7 @@ pub fn sweep(
     comptime ID: type,
     box_pool: *std.heap.MemoryPool(T),
     items: *std.ArrayList(?*T),
-    marks: *std.DynamicBitSet,
+    marks: *std.bit_set.Dynamic,
     dead: *std.ArrayList(ID),
     first: *usize,
     last: *usize,

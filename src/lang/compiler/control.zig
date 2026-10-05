@@ -124,8 +124,7 @@ pub fn compileRangeLoopBody(
         if (params[0].type_name) |tn| {
             const declared = try types_mod.evalTypeExpr(self.check(), tn);
             if (declared.tag != .number) {
-                const msg = try std.fmt.allocPrint(
-                    self.alloc,
+                const msg = try self.alloc.print(
                     "range loop variable must be num, got {s}",
                     .{@tagName(declared.tag)},
                 );
@@ -141,8 +140,7 @@ pub fn compileRangeLoopBody(
         if (params[1].type_name) |tn| {
             const declared = try types_mod.evalTypeExpr(self.check(), tn);
             if (declared.tag != .number) {
-                const msg = try std.fmt.allocPrint(
-                    self.alloc,
+                const msg = try self.alloc.print(
                     "range loop variable must be num, got {s}",
                     .{@tagName(declared.tag)},
                 );
@@ -216,8 +214,7 @@ pub fn compileFor(
     label: ?[]const u8,
 ) !void {
     if (params.len == 0 or params.len > 2) {
-        const msg = try std.fmt.allocPrint(
-            self.alloc,
+        const msg = try self.alloc.print(
             "for expects one or two binding names, got {d}",
             .{params.len},
         );
@@ -1033,7 +1030,7 @@ fn patternTypeInfo(self: *Compiler, pattern: *const Node) ?types_mod.TypeInfo {
 
             for (items, 0..) |item, idx| {
                 var buf: [16]u8 = undefined;
-                const name = std.fmt.bufPrint(&buf, "{d}", .{idx}) catch break :blk null;
+                const name = std.mem.print(&buf, "{d}", .{idx}) catch break :blk null;
                 const owned = self.alloc.dupe(u8, name) catch break :blk null;
 
                 fields.append(self.alloc, .{
@@ -1224,8 +1221,7 @@ fn findLoopFrame(self: *Compiler, label: ?[]const u8) !?*locals.LoopFrame {
 
 pub fn compileBreak(self: *Compiler, expr: *const Node, value: ?*const Node, label: ?[]const u8) !void {
     const frame = try findLoopFrame(self, label) orelse {
-        const msg = if (label) |lbl| try std.fmt.allocPrint(
-            self.alloc,
+        const msg = if (label) |lbl| try self.alloc.print(
             "no matching label for break/{s}",
             .{lbl},
         ) else "break is only valid inside loop";
@@ -1255,8 +1251,7 @@ pub fn compileBreak(self: *Compiler, expr: *const Node, value: ?*const Node, lab
 pub fn compileContinue(self: *Compiler, expr: *const Node, value: ?*const Node, label: ?[]const u8) !void {
     _ = value;
     const frame = try findLoopFrame(self, label) orelse {
-        const msg = if (label) |lbl| try std.fmt.allocPrint(
-            self.alloc,
+        const msg = if (label) |lbl| try self.alloc.print(
             "no matching label for continue/{s}",
             .{lbl},
         ) else "continue is only valid inside loop";

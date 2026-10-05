@@ -50,8 +50,7 @@ pub fn resolveField(self: *VM, object: Value, key: Value, result_reg: ?@import("
                 if (idx < str.len) {
                     return .{ .value = try self.ownValueStringNoDedup(str[idx .. idx + 1]), .from_meta = false };
                 }
-                const msg = std.fmt.allocPrint(
-                    self.runtime.alloc,
+                const msg = self.runtime.alloc.print(
                     "string index {d} out of range (len {d})",
                     .{ idx, str.len },
                 ) catch return error.OutOfMemory;

@@ -119,7 +119,7 @@ pub const Impl = struct {
                 vm.stringValue(sid)
             else if (item.asNumOpt()) |num| blk: {
                 var fmt_buf: [64]u8 = undefined;
-                break :blk std.fmt.bufPrint(&fmt_buf, "{}", .{num}) catch "?";
+                break :blk std.mem.print(&fmt_buf, "{}", .{num}) catch "?";
             } else "?";
             try buf.appendSlice(vm.runtime.alloc, item_str);
             if (i < tbl_data.array.items.len - 1) {
