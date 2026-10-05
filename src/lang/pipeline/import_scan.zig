@@ -183,7 +183,7 @@ fn extractPubDefs(node: *Node, prefix: []const u8, alloc: std.mem.Allocator, out
                 switch (d.inner.expr) {
                     .proc_macro => |pm| {
                         if (std.mem.endsWith(u8, pm.name, "!")) {
-                            const qualified = try std.fmt.allocPrint(alloc, "{s}.{s}", .{ prefix, ast.bareMacroName(pm.name) });
+                            const qualified = try alloc.print( "{s}.{s}", .{ prefix, ast.bareMacroName(pm.name) });
                             const proc_node = try ast.allocNode(alloc, d.inner.span, .{ .proc_macro = .{
                                 .name = qualified,
                                 .param = .{ .name = pm.param.name, .name_span = pm.param.name_span },
@@ -226,12 +226,12 @@ fn extractPubImportsOneLevel(
             if (stmt.pub_) {
                 // key by qualified prefix + path so different parents with same sub-path
                 // both get their macros extracted
-                const dedup_key = try std.fmt.allocPrint(alloc, "{s}.{s}.{s}", .{ prefix, stmt.name, stmt.path });
+                const dedup_key = try alloc.print( "{s}.{s}.{s}", .{ prefix, stmt.name, stmt.path });
                 defer alloc.free(dedup_key);
                 if (visited_sub.contains(dedup_key)) return;
                 try visited_sub.put(dedup_key, {});
 
-                const sub_prefix = try std.fmt.allocPrint(alloc, "{s}.{s}", .{ prefix, stmt.name });
+                const sub_prefix = try alloc.print( "{s}.{s}", .{ prefix, stmt.name });
                 defer alloc.free(sub_prefix);
 
                 const resolved = try resolveModuleFile(vm, stmt.path) orelse return;

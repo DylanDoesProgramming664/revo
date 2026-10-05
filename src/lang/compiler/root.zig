@@ -646,7 +646,7 @@ pub const Compiler = struct {
         const prefix = try std.mem.join(self.alloc, "::", self.test_suite_names.items);
         if (prefix.len == 0) return self.alloc.dupe(u8, test_name);
         defer self.alloc.free(prefix);
-        return std.fmt.allocPrint(self.alloc, "{s}::{s}", .{ prefix, test_name });
+        return self.alloc.print( "{s}::{s}", .{ prefix, test_name });
     }
 
     pub fn compileValue(self: *Compiler, expr: *const Node) InternalCompileError!void {
@@ -696,8 +696,7 @@ pub const Compiler = struct {
                     }
                 } else if (self.type_aliases.get(name)) |_| {
                     // type used as value
-                    const msg = try std.fmt.allocPrint(
-                        self.alloc,
+                    const msg = try self.alloc.print(
                         "type name `{s}` used as a value",
                         .{name},
                     );
@@ -908,13 +907,13 @@ pub const Compiler = struct {
                     "import statement outside function context",
                 );
                 if (state_mod.findLocalInCurrentScope(self, is.name)) |_| {
-                    const msg = try std.fmt.allocPrint(self.alloc, "name `{s}` is already defined", .{is.name});
+                    const msg = try self.alloc.print( "name `{s}` is already defined", .{is.name});
                     return self.fail(.ParseError, expr, msg);
                 }
                 // also check import_locals to prevent double import of same name
                 for (fn_state.import_locals.items) |il| {
                     if (std.mem.eql(u8, il.name, is.name)) {
-                        const msg = try std.fmt.allocPrint(self.alloc, "name `{s}` is already defined by another import", .{is.name});
+                        const msg = try self.alloc.print( "name `{s}` is already defined by another import", .{is.name});
                         return self.fail(.ParseError, expr, msg);
                     }
                 }
@@ -1198,8 +1197,7 @@ pub const Compiler = struct {
             if (isNamedParam(arg) != null) {
                 has_named = true;
             } else if (has_named) {
-                const msg = try std.fmt.allocPrint(
-                    self.alloc,
+                const msg = try self.alloc.print(
                     "positional arg cannot follow named arg",
                     .{},
                 );
@@ -1231,8 +1229,7 @@ pub const Compiler = struct {
                 for (sig.param_names, 0..) |sig_name, param_idx| {
                     if (std.mem.eql(u8, sig_name, param_name)) {
                         if (param_seen[param_idx]) {
-                            const msg = try std.fmt.allocPrint(
-                                self.alloc,
+                            const msg = try self.alloc.print(
                                 "parameter `{s}` specified multiple times",
                                 .{param_name},
                             );
@@ -1254,8 +1251,7 @@ pub const Compiler = struct {
                     }
                 }
                 if (!found) {
-                    const msg = try std.fmt.allocPrint(
-                        self.alloc,
+                    const msg = try self.alloc.print(
                         "unknown parameter `{s}` (expected one of: {s})",
                         .{
                             param_name,
@@ -1277,8 +1273,7 @@ pub const Compiler = struct {
                 }
             } else {
                 if (positional_idx >= sig.param_names.len) {
-                    const msg = try std.fmt.allocPrint(
-                        self.alloc,
+                    const msg = try self.alloc.print(
                         "too many positional args",
                         .{},
                     );
@@ -1322,14 +1317,12 @@ pub const Compiler = struct {
                 );
             }
             const msg = if (sig.required_count == sig.params.len)
-                try std.fmt.allocPrint(
-                    self.alloc,
+                try self.alloc.print(
                     "call to `{s}` wants {d} arg(s), got {d}",
                     .{ fn_name, sig.required_count, reordered_args.len },
                 )
             else
-                try std.fmt.allocPrint(
-                    self.alloc,
+                try self.alloc.print(
                     "call to `{s}` wants at least {d} arg(s), got {d}",
                     .{ fn_name, sig.required_count, reordered_args.len },
                 );
@@ -1357,27 +1350,23 @@ pub const Compiler = struct {
                     const expected_str = try type_syntax.formatTypeOpts(self.alloc, expected_type, .{});
                     const actual_str = try type_syntax.formatTypeOpts(self.alloc, actual_type, .{});
                     const label = if (sig.param_names[i].len == 0)
-                        try std.fmt.allocPrint(
-                            self.alloc,
+                        try self.alloc.print(
                             "arg {d}",
                             .{i + 1},
                         )
                     else
-                        try std.fmt.allocPrint(
-                            self.alloc,
+                        try self.alloc.print(
                             "arg {d} (`{s}`)",
                             .{ i + 1, sig.param_names[i] },
                         );
 
                     const headline = if (sig.param_names[i].len == 0)
-                        try std.fmt.allocPrint(
-                            self.alloc,
+                        try self.alloc.print(
                             "arg {d} to `{s}` wants {s}, got {s}",
                             .{ i + 1, fn_name, expected_str, actual_str },
                         )
                     else
-                        try std.fmt.allocPrint(
-                            self.alloc,
+                        try self.alloc.print(
                             "arg {d} (`{s}`) to `{s}` wants {s}, got {s}",
                             .{ i + 1, sig.param_names[i], fn_name, expected_str, actual_str },
                         );
@@ -1425,7 +1414,7 @@ pub const Compiler = struct {
                         const expected_str = try type_syntax.formatTypeOpts(self.alloc, expected_type, .{});
                         const actual_str = try type_syntax.formatTypeOpts(self.alloc, actual_type, .{});
                         try self.appendFailureReport(.ParseError, &.{
-                            .{ .@"error" = try std.fmt.allocPrint(self.alloc, "default for `{s}` wants {s}, got {s}", .{ sig.param_names[idx], expected_str, actual_str }) },
+                            .{ .@"error" = try self.alloc.print( "default for `{s}` wants {s}, got {s}", .{ sig.param_names[idx], expected_str, actual_str }) },
                         });
                         had_error = true;
                     },

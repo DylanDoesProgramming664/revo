@@ -516,9 +516,9 @@ pub fn run(vm: *VM, gpa: Allocator, init: std.process.Init) !void {
 
         var b: [512]u8 = undefined;
         const hist_path = if (std.c.getenv("HOME")) |p|
-            try std.fmt.bufPrintSentinel(&b, "{s}/.revo_history", .{std.mem.span(p)}, 0)
+            try std.mem.printSentinel(&b, "{s}/.revo_history", .{std.mem.span(p)}, 0)
         else
-            try std.fmt.bufPrintSentinel(&b, ".revo_history", .{}, 0);
+            try std.mem.printSentinel(&b, ".revo_history", .{}, 0);
         isocline_c.ic_set_history(hist_path.ptr, 1000);
 
         // lfeatures
@@ -532,7 +532,7 @@ pub fn run(vm: *VM, gpa: Allocator, init: std.process.Init) !void {
         for (&[_][]const u8{ "keyword", "string", "number", "function", "hash" }) |s| {
             const def = revo.term.replStyleDef(s);
             var name_buf: [32]u8 = undefined;
-            const s_c = try std.fmt.bufPrintSentinel(&name_buf, "{s}", .{s}, 0);
+            const s_c = try std.mem.printSentinel(&name_buf, "{s}", .{s}, 0);
             _ = isocline_c.ic_style_def(s_c.ptr, def.ptr);
         }
     }

@@ -55,7 +55,7 @@ else
 fn usageText(allocator: Allocator, args: []const ap.Arg, commands: []const ap.Command) ![]const u8 {
     const auto = try ap.usage(allocator, args, commands);
     defer allocator.free(auto);
-    return try std.fmt.allocPrint(allocator, "{s}{s}{s}", .{ SYNOPSIS, auto, EXAMPLES });
+    return try allocator.print( "{s}{s}{s}", .{ SYNOPSIS, auto, EXAMPLES });
 }
 
 const ExecutionMode = enum { run, repl, bench, disassemble, compile, doc, lsp };
@@ -722,12 +722,12 @@ fn compileToBytecode(
     else blk: {
         if (std.mem.endsWith(u8, path, ".rv")) {
             const base = path[0 .. path.len - 3];
-            break :blk std.fmt.allocPrint(arena, "{s}.rvo", .{base}) catch {
+            break :blk arena.print( "{s}.rvo", .{base}) catch {
                 printError(init, "output path allocation failed", .{});
                 return error.FileError;
             };
         } else {
-            break :blk std.fmt.allocPrint(arena, "{s}.rvo", .{path}) catch {
+            break :blk arena.print( "{s}.rvo", .{path}) catch {
                 printError(init, "output path allocation failed", .{});
                 return error.FileError;
             };

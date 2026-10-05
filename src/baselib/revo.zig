@@ -125,7 +125,7 @@ test "revo.dofile returns the file's value" {
     const file_path = try std.Io.Dir.path.join(std.testing.allocator, &.{ dir_path, "hi.rv" });
     defer std.testing.allocator.free(file_path);
 
-    const source = try std.fmt.allocPrint(std.testing.allocator,
+    const source = try std.testing.allocator.print(
         \\ const {{_, res}} = revo.dofile('{s}')
         \\ res.x
     , .{file_path});

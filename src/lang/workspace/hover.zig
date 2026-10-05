@@ -36,7 +36,7 @@ pub fn hover(
         if (txt.moduleMemberAt(snap.text, pos)) |mod_name| {
             if (revo.baselib.specs.isModule(mod_name)) {
                 var qbuf: [256]u8 = undefined;
-                const qualified = std.fmt.bufPrint(&qbuf, "{s}.{s}", .{ mod_name, name }) catch null;
+                const qualified = std.mem.print(&qbuf, "{s}.{s}", .{ mod_name, name }) catch null;
                 if (qualified) |q| {
                     if (revo.baselib.specs.findQualified(q)) |spec| {
                         return try renderSpecHover(alloc, spec, snap.text, pos, name);
@@ -267,7 +267,7 @@ fn renderRecordDisplay(alloc: std.mem.Allocator, sym: Symbol) ![]const u8 {
     const record = try buf.toOwnedSlice();
     defer alloc.free(record);
 
-    return try std.fmt.allocPrint(alloc, "{s}: {s}", .{ sym.name, record });
+    return try alloc.print("{s}: {s}", .{ sym.name, record });
 }
 
 /// a value binding's source line, pub-stripped, `(type = t)` appended if
@@ -282,7 +282,7 @@ fn renderBindingLine(
     line = std.mem.trim(u8, line, " \t\r");
     line = txt.stripPub(line);
     if (type_name.len > 0 and std.mem.find(u8, line, type_name) == null)
-        return std.fmt.allocPrint(alloc, "{s}\n(type = {s})", .{ line, type_name });
+        return alloc.print("{s}\n(type = {s})", .{ line, type_name });
     return alloc.dupe(u8, line);
 }
 
@@ -340,7 +340,7 @@ fn renderDefinitionOpts(
         return common.formatSig(alloc, name, sig);
     }
     if (type_name.len > 0 and std.mem.startsWith(u8, type_name, "fn(")) {
-        return std.fmt.allocPrint(alloc, "fn {s}{s}", .{ name, type_name[2..] });
+        return alloc.print("fn {s}{s}", .{ name, type_name[2..] });
     }
     if (type_name.len > 0)
         return alloc.dupe(u8, type_name);

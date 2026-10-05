@@ -40,7 +40,7 @@ pub fn inlayHints(
         // fn declarations get `-> ret` after the params; aliases fall
         // through to the generic `: type` hint below
         if (ti.tag == .function) {
-            const decl_needle = try std.fmt.allocPrint(alloc, "fn {s}(", .{sym.name});
+            const decl_needle = try alloc.print( "fn {s}(", .{sym.name});
             defer alloc.free(decl_needle);
             if (std.mem.find(u8, line, decl_needle) != null) {
                 if (std.mem.find(u8, line, "->") != null or ti.tag.function.return_type.tag == .any) continue;
@@ -53,7 +53,7 @@ pub fn inlayHints(
 
                 try hints.append(alloc, .{
                     .position = .{ .line = sym.range.start.line, .character = paren + 1 },
-                    .label = try std.fmt.allocPrint(alloc, " -> {s}", .{ret}),
+                    .label = try alloc.print( " -> {s}", .{ret}),
                     .kind = .type,
                 });
                 continue;
@@ -62,13 +62,13 @@ pub fn inlayHints(
 
         const tn = try type_syntax.formatTypeOpts(alloc, ti, .{});
         defer alloc.free(tn);
-        const needle = try std.fmt.allocPrint(alloc, ": {s}", .{tn});
+        const needle = try alloc.print( ": {s}", .{tn});
         defer alloc.free(needle);
         if (std.mem.find(u8, line, needle) != null) continue;
 
         try hints.append(alloc, .{
             .position = sym.range.end,
-            .label = try std.fmt.allocPrint(alloc, ": {s}", .{tn}),
+            .label = try alloc.print( ": {s}", .{tn}),
             .kind = .type,
         });
     }

@@ -890,7 +890,7 @@ pub fn appendUnionVariantPayload(alloc: std.mem.Allocator, variant: UnionVariant
 
         for (fields[1..]) |f| {
             var buf: [16]u8 = undefined;
-            const want = std.fmt.bufPrint(&buf, "{d}", .{idx}) catch return;
+            const want = std.mem.print(&buf, "{d}", .{idx}) catch return;
             if (!std.mem.eql(u8, f.name, want)) return;
             try out.append(alloc, f.field_type);
             idx += 1;
@@ -1076,7 +1076,7 @@ fn inferTableType(ctx: CheckCtx, entries: []const ast.TableEntry) TypeInfo {
             }
         } else {
             // keyless/implicit entries are numeric fields
-            const idx_name = std.fmt.allocPrint(ctx.alloc, "{d}", .{array_index}) catch return .{ .tag = .any };
+            const idx_name = ctx.alloc.print( "{d}", .{array_index}) catch return .{ .tag = .any };
             array_index += 1;
             fields.append(ctx.alloc, .{ .name = idx_name, .field_type = field_type }) catch return .{ .tag = .any };
             saw_implicit_key = true;
@@ -1528,7 +1528,7 @@ fn tableArrayLen(fields: ?[]const RecordField) ?usize {
     var len: usize = 0;
     while (len <= fs.len) {
         var buf: [16]u8 = undefined;
-        const want = std.fmt.bufPrint(&buf, "{d}", .{len}) catch return null;
+        const want = std.mem.print(&buf, "{d}", .{len}) catch return null;
         if (findField(fs, want) == null) break;
         len += 1;
     }
@@ -1544,7 +1544,7 @@ fn tableArrayLen(fields: ?[]const RecordField) ?usize {
 /// element type at idx, null when absent
 fn tableElemType(fields: []const RecordField, idx: usize) ?TypeInfo {
     var buf: [16]u8 = undefined;
-    const want = std.fmt.bufPrint(&buf, "{d}", .{idx}) catch return null;
+    const want = std.mem.print(&buf, "{d}", .{idx}) catch return null;
 
     if (findField(fields, want)) |f| return f.field_type;
     return null;
@@ -1854,7 +1854,7 @@ pub fn suggestArmPattern(alloc: std.mem.Allocator, subject: TypeInfo, tag: []con
                 if (v.types.len == 0) return null;
 
                 if (v.types[0].tag == .atom) {
-                    return try std.fmt.allocPrint(alloc, ":{s}", .{tag});
+                    return try alloc.print( ":{s}", .{tag});
                 }
 
                 if (v.types[0].tag == .table) {
@@ -1864,7 +1864,7 @@ pub fn suggestArmPattern(alloc: std.mem.Allocator, subject: TypeInfo, tag: []con
 
                     // positional only, named shapes fall back to `_`
                     if (fields.len != alen) return null;
-                    if (alen == 1) return try std.fmt.allocPrint(alloc, "{{:{s}}}", .{tag});
+                    if (alen == 1) return try alloc.print( "{{:{s}}}", .{tag});
 
                     var buf = try std.ArrayList(u8).initCapacity(alloc, 8 + alen * 3);
                     errdefer buf.deinit(alloc);
@@ -1884,8 +1884,8 @@ pub fn suggestArmPattern(alloc: std.mem.Allocator, subject: TypeInfo, tag: []con
             return null;
         },
 
-        .bool => return try std.fmt.allocPrint(alloc, ":{s}", .{tag}),
-        .atom => return try std.fmt.allocPrint(alloc, ":{s}", .{tag}),
+        .bool => return try alloc.print( ":{s}", .{tag}),
+        .atom => return try alloc.print( ":{s}", .{tag}),
 
         else => return null,
     }

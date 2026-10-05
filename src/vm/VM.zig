@@ -980,7 +980,7 @@ pub fn setRuntimeMessage(self: *VM, message: []const u8) !void {
 }
 
 pub fn setRuntimeMessageFmt(self: *VM, comptime fmt_str: []const u8, args: anytype) !void {
-    const message = try std.fmt.allocPrint(self.runtime.alloc, fmt_str, args);
+    const message = try self.runtime.alloc.print( fmt_str, args);
     self.clearRuntimeMessage();
     self.runtime_message = message;
 }
@@ -997,8 +997,7 @@ pub fn clearRuntimeMessage(self: *VM) void {
 
 /// shorthand for TypeError with "want X, got Y"
 pub fn typeError(self: *VM, comptime expected: []const u8, got: mem.Value) RunFailure {
-    const msg = std.fmt.allocPrint(
-        self.runtime.alloc,
+    const msg = self.runtime.alloc.print(
         "want {s}, got {s}",
         .{ expected, @tagName(got.tag()) },
     ) catch return self.runFailure(error.TypeError);
@@ -1008,7 +1007,7 @@ pub fn typeError(self: *VM, comptime expected: []const u8, got: mem.Value) RunFa
 }
 
 pub fn fail(self: *VM, comptime err: RunError, comptime fmt: []const u8, args: anytype) RunFailure {
-    const msg = std.fmt.allocPrint(self.runtime.alloc, fmt, args) catch
+    const msg = self.runtime.alloc.print( fmt, args) catch
         return self.runFailure(err);
     self.setRuntimeMessageOwned(msg);
     return self.runFailure(err);

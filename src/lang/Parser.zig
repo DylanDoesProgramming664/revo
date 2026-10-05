@@ -1274,7 +1274,7 @@ fn parseQuasiquote(self: *Parser, token: Token) anyerror!*Node {
             try splices.append(self.alloc, raw[start..i]);
             try modified.appendSlice(self.alloc, "__qq_");
             var buf: [32]u8 = undefined;
-            try modified.appendSlice(self.alloc, try std.fmt.bufPrint(&buf, "{d}", .{counter}));
+            try modified.appendSlice(self.alloc, try std.mem.print(&buf, "{d}", .{counter}));
             counter += 1;
         } else {
             try modified.append(self.alloc, raw[i]);

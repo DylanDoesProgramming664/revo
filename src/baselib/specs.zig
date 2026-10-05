@@ -204,7 +204,7 @@ pub fn macroSources(caller_alloc: std.mem.Allocator) ![]const []const u8 {
 fn headKey(spec: *const FnSpec, buf: []u8) []const u8 {
     return switch (spec.head.kind) {
         .global => spec.name,
-        .namespaced => std.fmt.bufPrint(buf, "{s}.{s}", .{ spec.head.module.?, spec.name }) catch spec.name,
+        .namespaced => std.mem.print(buf, "{s}.{s}", .{ spec.head.module.?, spec.name }) catch spec.name,
     };
 }
 

@@ -459,7 +459,7 @@ fn makeStatTable(vm: *VM, stat: File.Stat) !Value {
 }
 
 fn sourceForPath(comptime template: []const u8, path: []const u8) ![]u8 {
-    return std.fmt.allocPrint(alloc, template, .{path});
+    return alloc.print(template, .{path});
 }
 
 test "fs.glob returning empty table on bogus path" {
@@ -638,7 +638,7 @@ test "fs.open w truncates existing file" {
     const file_path = try std.Io.Dir.path.join(alloc, &.{ dir_path, "t.txt" });
     defer alloc.free(file_path);
 
-    const source = try std.fmt.allocPrint(alloc,
+    const source = try alloc.print(
         \\ fs.open('{s}', "w")?:close()
         \\ fs.open('{s}')?:read()?
     , .{ file_path, file_path });
@@ -659,7 +659,7 @@ test "fs.open a creates missing file and keeps existing content" {
     const made = try std.Io.Dir.path.join(alloc, &.{ dir_path, "made.txt" });
     defer alloc.free(made);
 
-    const source = try std.fmt.allocPrint(alloc,
+    const source = try alloc.print(
         \\ fs.open('{s}', "a")?:close()
         \\ fs.open('{s}', "a")?:close()
         \\ fs.open('{s}')?:read()?
@@ -702,7 +702,7 @@ test "fs.touch creates missing file and leaves existing content" {
     const made = try std.Io.Dir.path.join(alloc, &.{ dir_path, "touched.txt" });
     defer alloc.free(made);
 
-    const source = try std.fmt.allocPrint(alloc,
+    const source = try alloc.print(
         \\ fs.touch('{s}')
         \\ fs.touch('{s}')
         \\ fs.open('{s}')?:read()?
@@ -721,7 +721,7 @@ test "fs.mkdir parents flag creates nested parents" {
     const nested = try std.Io.Dir.path.join(alloc, &.{ dir_path, "a", "b", "c" });
     defer alloc.free(nested);
 
-    const source = try std.fmt.allocPrint(alloc,
+    const source = try alloc.print(
         \\ fs.mkdir('{s}', :true)
         \\ fs.exists?('{s}')
     , .{ nested, nested });
@@ -742,7 +742,7 @@ test "fs.copy roundtrips contents" {
     const dst = try std.Io.Dir.path.join(alloc, &.{ dir_path, "dst.txt" });
     defer alloc.free(dst);
 
-    const source = try std.fmt.allocPrint(alloc,
+    const source = try alloc.print(
         \\ fs.copy('{s}', '{s}')
         \\ fs.open('{s}')?:read()?
     , .{ src, dst, dst });
@@ -762,7 +762,7 @@ test "fs.remove recursive deletes tree" {
     const deep = try std.Io.Dir.path.join(alloc, &.{ dir_path, "tree", "sub", "deep.txt" });
     defer alloc.free(deep);
 
-    const source = try std.fmt.allocPrint(alloc,
+    const source = try alloc.print(
         \\ fs.mkdir('{s}/sub', :true)
         \\ fs.touch('{s}')
         \\ fs.remove('{s}', :true)
@@ -861,7 +861,7 @@ test "fs.stat follow flag sees through symlinks" {
     const link_path = try std.Io.Dir.path.join(alloc, &.{ dir_path, "link.txt" });
     defer alloc.free(link_path);
 
-    const source = try std.fmt.allocPrint(alloc,
+    const source = try alloc.print(
         \\ string({{fs.stat('{s}')?.kind, fs.stat('{s}', :false)?.kind}})
     , .{ link_path, link_path });
     defer alloc.free(source);
@@ -879,7 +879,7 @@ test "file.stat follow flag reads metadata from handle" {
     const file_path = try std.Io.Dir.path.join(alloc, &.{ dir_path, "h.txt" });
     defer alloc.free(file_path);
 
-    const source = try std.fmt.allocPrint(alloc,
+    const source = try alloc.print(
         \\ const f = fs.open('{s}')?
         \\ string({{f:stat()?.size, f:stat(:false)?.size}})
     , .{file_path});

@@ -114,7 +114,7 @@ fn writeString(data: Value, vm: *VM, writer: *Writer) anyerror!void {
 
 fn writeNum(data: Value, vm: *VM, writer: *Writer) anyerror!void {
     const num = data.asNumOpt().?;
-    const str = try std.fmt.allocPrint(vm.runtime.alloc, "{d}", .{num});
+    const str = try vm.runtime.alloc.print("{d}", .{num});
     defer vm.runtime.alloc.free(str);
     try writer.writeField(str);
 }

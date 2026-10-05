@@ -308,8 +308,7 @@ fn compileAssignInner(
         },
         else => {
             // all bullshit like == or |
-            const msg = try std.fmt.allocPrint(
-                self.alloc,
+            const msg = try self.alloc.print(
                 "bad assignment target: {s}",
                 .{@tagName(target.expr)},
             );
@@ -335,8 +334,7 @@ pub fn validateTablePatternShape(
     // exact arity on the array part
     // ; hash entries dont matter
     if (got == pattern.len) return;
-    const msg = try std.fmt.allocPrint(
-        self.alloc,
+    const msg = try self.alloc.print(
         "table {s} expects {d} items, got {d}",
         .{ context, pattern.len, got },
     );
@@ -373,8 +371,7 @@ fn storeIdentTop(self: *Compiler, name: []const u8, target: *const Node, hint_no
                 self.vm.frozen_globals.contains(atom);
 
             if (!known) {
-                const msg = try std.fmt.allocPrint(
-                    self.alloc,
+                const msg = try self.alloc.print(
                     "assignment target `{s}` is not declared",
                     .{name},
                 );
@@ -383,8 +380,7 @@ fn storeIdentTop(self: *Compiler, name: []const u8, target: *const Node, hint_no
 
             try self.emit(.store_user_global, atom);
         } else {
-            const msg = try std.fmt.allocPrint(
-                self.alloc,
+            const msg = try self.alloc.print(
                 "assignment target `{s}` is not declared",
                 .{name},
             );

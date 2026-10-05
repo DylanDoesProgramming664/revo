@@ -183,14 +183,15 @@ pub fn build(b: *Build) !void {
     const mimalloc_enabled = !is_freestanding and features.mimalloc;
     const ffi_enabled = !is_freestanding and !is_wasm and target.result.os.tag != .windows and features.ffi;
 
-    var git_exit_code: u8 = 0; // ignored, but it's a required argument
-    const git_output = b.runAllowFail(
-        &.{ "git", "rev-parse", "--short", "HEAD" },
-        &git_exit_code,
-        .ignore,
-    ) catch VERSION;
+    const git_result = b.runFallible(&.{ "git", "rev-parse", "--short", "HEAD" }, .{
+        .stderr_behavior = .ignore,
+    });
+    const git_version = switch (git_result) {
+        .success => |output| output,
+        else => VERSION,
+    };
 
-    const dev_version = std.mem.trim(u8, git_output, " \n\r");
+    const dev_version = std.mem.trim(u8, git_version, " \n\r");
 
     // used for dev builds
     const debug_options = b.addOptions();
@@ -308,7 +309,7 @@ pub fn build(b: *Build) !void {
     exe_mod.addImport("isocline", isocline_mod);
 
     // only linked into artifacts that reference it
-    const mimalloc_dep = if (mimalloc_enabled) b.lazyDependency("mimalloc", .{}) else null;
+    const mimalloc_dep = if (mimalloc_enabled) b.dependencyLazy("mimalloc", .{}) catch null else null;
     const mimalloc_lib = if (mimalloc_dep) |dep|
         try builds.mimalloc(b, target, effective_optimize, dep)
     else
@@ -320,10 +321,10 @@ pub fn build(b: *Build) !void {
 
     // vendored libffi, posix only; proves fetch+configure+link
     // , nothing references its symbols yet (that lands with ffi.zig)
-    const ffi_dep = if (ffi_enabled) b.lazyDependency("libffi", .{
+    const ffi_dep = if (ffi_enabled) b.dependencyLazy("libffi", .{
         .target = target,
         .optimize = effective_optimize,
-    }) else null;
+    }) catch null else null;
     var test_ffi_lib: ?*std.Build.Step.Compile = null;
     if (ffi_dep) |dep| {
         const ffi_lib = dep.artifact("ffi");
@@ -704,10 +705,10 @@ pub fn build(b: *Build) !void {
                     release_target,
                     release_optimize,
                 );
-                if (b.lazyDependency("libffi", .{
+                if (b.dependencyLazy("libffi", .{
                     .target = release_target,
                     .optimize = release_optimize,
-                })) |rel_ffi_dep| {
+                }) catch null) |rel_ffi_dep| {
                     const rel_ffi_lib = rel_ffi_dep.artifact("ffi");
                     rel_c_ffi.linkLibrary(rel_ffi_lib);
                     release_mod.linkLibrary(rel_ffi_lib);
@@ -835,7 +836,7 @@ const builds = struct {
         tag: []const u8,
     ) *Module {
         if (enabled) {
-            if (b.lazyDependency("isocline", .{})) |isocline_dep| {
+            if (b.dependencyLazy("isocline", .{}) catch null) |isocline_dep| {
                 const translate_c_dep = b.dependency("translate_c", .{});
                 const translator: Translator = .init(translate_c_dep, .{
                     .c_source_file = isocline_dep.path("include/isocline.h"),
